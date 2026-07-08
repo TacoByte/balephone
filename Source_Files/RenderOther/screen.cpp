@@ -40,6 +40,11 @@
 #include "OGL_Textures.h"
 #endif
 
+#if defined(HAVE_OPENGL) && defined(__EMSCRIPTEN__)
+// gl4es must be initialized once a WebGL context exists (wasm/config/gl4es_support.c)
+extern "C" void wasm_gl4es_init(void);
+#endif
+
 #include "world.h"
 #include "map.h"
 #include "render.h"
@@ -966,6 +971,9 @@ static void change_screen_mode(int width, int height, int depth, bool nogl, bool
 		if (!context_created) {
 			SDL_GL_CreateContext(main_screen);
 			context_created = true;
+#ifdef __EMSCRIPTEN__
+			wasm_gl4es_init();
+#endif
 		}
 #if defined (__WIN32__) && (HAVE_OPENGL)
 		glewInit();
@@ -1060,6 +1068,9 @@ static void change_screen_mode(int width, int height, int depth, bool nogl, bool
 	if (!context_created && !nogl && screen_mode.acceleration != _no_acceleration) {
 		SDL_GL_CreateContext(main_screen);
 		context_created = true;
+#ifdef __EMSCRIPTEN__
+		wasm_gl4es_init();
+#endif
 	}
 #endif
 	} // end if need_window

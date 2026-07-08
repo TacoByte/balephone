@@ -30,6 +30,20 @@
 
 std::vector<FBO *> FBO::active_chain;
 
+// WebGL has no GL_FRAMEBUFFER_SRGB; toggling it every frame just spams
+// INVALID_ENUM warnings, so make it a no-op there.
+static inline void set_framebuffer_srgb(bool enable)
+{
+#ifndef __EMSCRIPTEN__
+	if (enable)
+		glEnable(GL_FRAMEBUFFER_SRGB_EXT);
+	else
+		glDisable(GL_FRAMEBUFFER_SRGB_EXT);
+#else
+	(void)enable;
+#endif
+}
+
 FBO::FBO(GLuint w, GLuint h, bool srgb) : _h(h), _w(w), _srgb(srgb) {
 	glGenFramebuffersEXT(1, &_fbo);
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, _fbo);
@@ -54,10 +68,7 @@ void FBO::activate(bool clear, GLuint fboTarget) {
 		glBindFramebufferEXT(fboTarget, _fbo);
 		glPushAttrib(GL_VIEWPORT_BIT);
 		glViewport(0, 0, _w, _h);
-		if (_srgb)
-			glEnable(GL_FRAMEBUFFER_SRGB_EXT);
-		else
-			glDisable(GL_FRAMEBUFFER_SRGB_EXT);
+		set_framebuffer_srgb(_srgb);
 		if (clear)
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	}
@@ -75,10 +86,7 @@ void FBO::deactivate() {
 			prev_srgb = active_chain.back()->_srgb;
 		}
 		glBindFramebufferEXT(_fboTarget, prev_fbo);
-		if (prev_srgb)
-			glEnable(GL_FRAMEBUFFER_SRGB_EXT);
-		else
-			glDisable(GL_FRAMEBUFFER_SRGB_EXT);
+		set_framebuffer_srgb(prev_srgb);
 	}
 }
 
@@ -172,10 +180,7 @@ void FBOSwapper::copy(FBO& other, bool srgb) {
 
 void FBOSwapper::blend(FBO& other, bool srgb) {
 	activate();
-	if (!srgb)
-		glDisable(GL_FRAMEBUFFER_SRGB_EXT);
-	else
-		glEnable(GL_FRAMEBUFFER_SRGB_EXT);
+	set_framebuffer_srgb(srgb);
 	other.draw_full(true);
 	deactivate();
 }

@@ -34,6 +34,18 @@
 #define GLEW_STATIC 1
 #include <GL/glew.h>
 
+#elif defined(__EMSCRIPTEN__)
+
+// gl4es: its GL/gl.h macro-remaps gl* to the exported gl4es_gl* symbols
+// (symbol aliasing is unavailable on wasm). SDL_opengl.h must not be used
+// here, as it declares unmangled names that never resolve.
+#ifndef GL_GLEXT_PROTOTYPES
+#define GL_GLEXT_PROTOTYPES 1
+#endif
+#include <GL/gl.h>
+#include <GL/glu.h>
+#include "gl4es_compat.h"
+
 #else
 
 #ifndef GL_GLEXT_PROTOTYPES

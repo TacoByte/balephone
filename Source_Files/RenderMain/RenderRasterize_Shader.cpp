@@ -47,7 +47,9 @@ public:
 	
 	void begin() {
 		_swapper.activate();
+#ifndef __EMSCRIPTEN__ // no GL_FRAMEBUFFER_SRGB on WebGL
 		glDisable(GL_FRAMEBUFFER_SRGB_EXT); // don't blend for initial
+#endif
 	}
 
 	void end() {
