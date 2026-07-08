@@ -36,6 +36,7 @@ OPUS_TAG=v1.5.2
 SNDFILE_TAG=1.2.2
 OPENAL_TAG=1.23.1
 ASIO_TAG=asio-1-30-2
+GL4ES_COMMIT=17f0894e19d1553e4176276c759915dab44c08e2  # v1.1.7 master, no release tag
 DATA_URL="https://github.com/Aleph-One-Marathon/alephone/releases/download/release-20250829/Marathon2-20250829-Data.zip"
 
 clone() { # repo tag dir
@@ -91,6 +92,25 @@ build openal-soft \
     -DCMAKE_C_FLAGS=-fexceptions -DCMAKE_CXX_FLAGS=-fexceptions
 
 # asio is header-only; the engine build includes it straight from deps/.
+
+# --- gl4es (desktop OpenGL 2.x -> GLES2/WebGL translation) -------------------
+# Built static, no loader/constructor: the engine calls initialize_gl4es()
+# itself once SDL has created the WebGL context (wasm/config/gl4es_support.c).
+# Installed in-tree (deps/gl4es/lib); the engine links it from there.
+
+if [ -d "$DEPS/gl4es" ]; then
+    echo "--- gl4es: already cloned, skipping fetch"
+else
+    git clone https://github.com/ptitSeb/gl4es.git "$DEPS/gl4es"
+    git -C "$DEPS/gl4es" checkout "$GL4ES_COMMIT"
+fi
+
+echo "--- building gl4es"
+emcmake cmake -B "$DEPS/gl4es/build" -S "$DEPS/gl4es" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DSTATICLIB=ON -DNOX11=ON -DNOEGL=ON \
+    -DNO_LOADER=ON -DNO_INIT_CONSTRUCTOR=ON -DDEFAULT_ES=2
+cmake --build "$DEPS/gl4es/build" -j"$JOBS"
 
 # --- Marathon 2 game data ----------------------------------------------------
 
