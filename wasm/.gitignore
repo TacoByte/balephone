@@ -1,0 +1,16 @@
+# cmake output
+build/
+
+# vendored third-party sources (openal-soft, libsndfile, ogg/vorbis/flac/opus, asio)
+deps/
+
+# emscripten-built static libs + headers installed from deps
+prefix/
+
+# Marathon 2 game data (fetch separately; freely released by Bungie)
+gamedata/
+
+# test harness artifacts
+test/node_modules/
+test/*.png
+test/*.log
