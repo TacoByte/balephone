@@ -30,6 +30,10 @@
 #include <thread>
 #include "Logging.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 static const auto epoch = std::chrono::steady_clock::now();
 
 /* a knob to play the game in "slow motion" to debug timing sensitive features.
@@ -53,7 +57,13 @@ uint64_t machine_tick_count(void)
 
 void sleep_for_machine_ticks(uint32 ticks)
 {
+#ifdef __EMSCRIPTEN__
+	// Yield to the browser event loop (requires ASYNCIFY); sleep_for would
+	// busy-wait and hang the tab.
+	emscripten_sleep(ticks * TIME_SKEW);
+#else
 	std::this_thread::sleep_for(std::chrono::milliseconds(ticks*TIME_SKEW));
+#endif
 }
 
 /*
@@ -62,7 +72,13 @@ void sleep_for_machine_ticks(uint32 ticks)
 
 void sleep_until_machine_tick_count(uint64_t ticks)
 {
+#ifdef __EMSCRIPTEN__
+	const auto now = machine_tick_count();
+	if (ticks > now)
+		emscripten_sleep((ticks - now) * TIME_SKEW);
+#else
 	std::this_thread::sleep_until(std::chrono::steady_clock::time_point(std::chrono::milliseconds(ticks*TIME_SKEW)));
+#endif
 }
 
 /*
@@ -70,7 +86,13 @@ void sleep_until_machine_tick_count(uint64_t ticks)
  */
 void yield(void)
 {
+#ifdef __EMSCRIPTEN__
+	// Give the browser a chance to run its event loop; std::this_thread::yield
+	// is a no-op on the web and would leave dialog loops spinning forever.
+	emscripten_sleep(1);
+#else
 	std::this_thread::yield();
+#endif
 }
 
 /*

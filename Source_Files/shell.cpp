@@ -117,6 +117,10 @@
 #include "steamshim_child.h"
 #endif
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 // Data directories
 vector <DirectorySpecifier> data_search_path; // List of directories in which data files are searched for
 DirectorySpecifier local_data_dir;    // Local (per-user) data file directory
@@ -815,6 +819,12 @@ void main_event_loop(void)
 				last_redraw = machine_tick_count();
 			}
 		}
+
+#ifdef __EMSCRIPTEN__
+		// Guarantee the browser event loop runs at least once per iteration,
+		// even on paths that never sleep (e.g. uncapped fps during gameplay).
+		emscripten_sleep(0);
+#endif
 	}
 }
 

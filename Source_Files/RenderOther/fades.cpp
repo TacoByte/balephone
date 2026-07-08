@@ -441,8 +441,10 @@ void full_fade(
 	
 	explicit_start_fade(type, original_color_table, &animated_color_table);
 	while (update_fades())
+	{
 		Music::instance()->Idle();
-		;
+		yield(); // let the browser/system run; fades are wall-clock timed
+	}
 }
 
 void gamma_correct_color_table(

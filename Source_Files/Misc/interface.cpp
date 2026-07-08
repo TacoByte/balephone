@@ -1705,6 +1705,7 @@ static void display_epilogue(
 		do
 		{
 			Music::instance()->Idle();
+			yield();
 		}
 		while (machine_tick_count()-ticks<10);
 	}
@@ -3402,7 +3403,13 @@ void interface_fade_out(
 		if(fade_music) 
 		{
 			while(Music::instance()->Playing()) 
+			{
 				Music::instance()->Idle();
+				// The fade completes in the audio callback, which needs the
+				// main thread to yield (esp. on Emscripten, where a hard spin
+				// here deadlocks the tab).
+				yield();
+			}
 
 			/* and give up the memory */
 			Music::instance()->Pause();
