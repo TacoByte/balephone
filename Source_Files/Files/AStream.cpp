@@ -34,8 +34,9 @@
 	http://www.gnu.org/licenses/gpl.html
  */
 
-#if !defined(DISABLE_NETWORKING)
- 
+// Note: AStream is used by non-network code (import_definitions, ImageLoader),
+// so it must be built even when DISABLE_NETWORKING is defined.
+
 #include "AStream.h"
 #include <string.h>
 
@@ -322,6 +323,4 @@ AStream::failure::~failure() noexcept {
  {
 	 return _M_name;
  }
-
-#endif // !defined(DISABLE_NETWORKING)
 
