@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Marathon 2: Durandal — Aleph One (WebAssembly)</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #000; color: #9fb4a0;
+    font-family: "Courier New", monospace;
+    overflow: hidden;
+  }
+  #wrap {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    height: 100%; gap: 16px;
+  }
+  canvas {
+    image-rendering: pixelated;
+    outline: none;
+  }
+  #status { font-size: 14px; letter-spacing: 0.08em; }
+  #bar {
+    width: 320px; height: 6px; background: #10201a;
+    border: 1px solid #2c4a3c; display: none;
+  }
+  #bar > div { height: 100%; width: 0%; background: #4be08a; }
+  #boot.hidden, #bar.hidden, #status.hidden { display: none; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="boot">
+    <div id="status">STANDBY // FETCHING ENGINE</div>
+    <div id="bar"><div id="barfill"></div></div>
+  </div>
+  <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+</div>
+<script src="alephone.js"></script>
+<script>
+  const statusEl = document.getElementById('status');
+  const bar = document.getElementById('bar');
+  const barfill = document.getElementById('barfill');
+
+  const PERSIST_DIR = '/home/web_user/.alephone';
+
+  // Scale the canvas to fill the window (letterboxed) regardless of the
+  // engine's render resolution. SDL's emscripten driver rescales mouse
+  // coordinates by the element's CSS size, so input stays accurate.
+  const canvasEl = document.getElementById('canvas');
+  function fitCanvas() {
+    const rw = canvasEl.width, rh = canvasEl.height;
+    if (!rw || !rh) return;
+    const scale = Math.min(window.innerWidth / rw, window.innerHeight / rh);
+    canvasEl.style.width = Math.round(rw * scale) + 'px';
+    canvasEl.style.height = Math.round(rh * scale) + 'px';
+  }
+  new MutationObserver(fitCanvas).observe(canvasEl, {
+    attributes: true, attributeFilter: ['width', 'height'],
+  });
+  window.addEventListener('resize', fitCanvas);
+
+  AlephOne({
+    canvas: document.getElementById('canvas'),
+    arguments: ['/data/game'],
+    setStatus(text) {
+      if (!text) return;
+      statusEl.textContent = text.toUpperCase();
+      const m = text.match(/\((\d+(\.\d+)?)\/(\d+(\.\d+)?)\)/);
+      if (m) {
+        bar.style.display = 'block';
+        barfill.style.width = (100 * parseFloat(m[1]) / parseFloat(m[3])) + '%';
+      }
+    },
+    print(text) { console.log(text); },
+    printErr(text) { console.warn(text); },
+  }).then((Module) => {
+    window.__module = Module; // console/testing access
+    // Persist prefs + saved games in IndexedDB, then start the game.
+    Module.FS.mkdirTree(PERSIST_DIR);
+    Module.FS.mount(Module.FS.filesystems.IDBFS, {}, PERSIST_DIR);
+    Module.FS.syncfs(true, (err) => {
+      if (err) console.warn('IDBFS load failed:', err);
+
+      // Flush writes back to IndexedDB periodically and when leaving.
+      const persist = () => Module.FS.syncfs(false, (e) => {
+        if (e) console.warn('IDBFS save failed:', e);
+      });
+      setInterval(persist, 10000);
+      window.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') persist();
+      });
+
+      document.getElementById('boot').classList.add('hidden');
+      Module.callMain(['/data/game']);
+    });
+  });
+</script>
+</body>
+</html>
