@@ -180,6 +180,8 @@ set(SOURCES
     ${SF}/Network/PortForward.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/config/network_stubs.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/config/wasm_compat.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/config/glu_shim.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/config/gl4es_support.c
 
     # RenderMain (software rasterizer; OGL_* files self-stub without HAVE_OPENGL)
     ${SF}/RenderMain/AnimatedTextures.cpp
@@ -203,6 +205,8 @@ set(SOURCES
     ${SF}/RenderMain/textures.cpp
     ${SF}/RenderMain/OGL_Shader.cpp
     ${SF}/RenderMain/OGL_FBO.cpp
+    ${SF}/RenderMain/Rasterizer_Shader.cpp
+    ${SF}/RenderMain/RenderRasterize_Shader.cpp
 
     # RenderOther
     ${SF}/RenderOther/ChaseCam.cpp
@@ -278,6 +282,7 @@ target_include_directories(alephone PRIVATE
     ${SF}/XML
     ${WASM_PREFIX}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/deps/asio-src/asio/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/gl4es/include   # GL/gl.h, GL/glu.h, gl4esinit.h
 )
 
 target_compile_definitions(alephone PRIVATE
@@ -316,12 +321,17 @@ target_link_options(alephone PRIVATE
     "-sEXPORT_NAME=AlephOne"
     "-sEXPORTED_RUNTIME_METHODS=FS,callMain"
     "-sINVOKE_RUN=0"
+    # gl4es (desktop GL -> ES2): needs client-side arrays and runtime
+    # GLES symbol lookup from emscripten's GL library.
+    "-sFULL_ES2=1"
+    "-sGL_ENABLE_GET_PROC_ADDRESS=1"
     "-lidbfs.js"
     "--preload-file=${GAME_DATA_DIR}@/data/game"
     "--preload-file=${ENGINE_DATA_DIR}@/data/engine"
 )
 
 target_link_libraries(alephone PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/gl4es/lib/libGL.a
     ${WASM_PREFIX}/lib/libopenal.a
     ${WASM_PREFIX}/lib/libsndfile.a
     ${WASM_PREFIX}/lib/libvorbisenc.a

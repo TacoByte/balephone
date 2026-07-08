@@ -10,6 +10,7 @@
 #include "network.h"
 #include "network_games.h"
 #include "network_star.h"
+#include "progress.h"
 
 #include <string.h>
 #include <string>
@@ -62,6 +63,17 @@ void calculate_player_rankings(struct player_ranking_data* rankings)
 void calculate_ranking_text(char* buffer, long) { buffer[0] = '\0'; }
 
 void calculate_ranking_text_for_post_game(char* buffer, long) { buffer[0] = '\0'; }
+
+// --- progress dialog (implemented in network_dialogs.cpp upstream) ---------
+// Used by OGL_Setup's texture preloading; a no-op suffices on the web where
+// loads are near-instant from MEMFS.
+
+void open_progress_dialog(size_t, bool) {}
+void close_progress_dialog() {}
+void set_progress_dialog_message(size_t) {}
+void draw_progress_bar(size_t, size_t) {}
+void reset_progress_bar() {}
+void progress_dialog_event() {}
 
 // --- star protocol tuning knobs (console commands in preferences.cpp) ------
 

@@ -13,7 +13,9 @@
 
 /* Disabled subsystems */
 #define DISABLE_NETWORKING 1
-/* no HAVE_OPENGL: software renderer only (phase 1) */
+
+/* OpenGL renderer via gl4es (desktop GL 2.x -> WebGL) */
+#define HAVE_OPENGL 1
 /* no HAVE_CURL, HAVE_ZZIP, HAVE_PNG, HAVE_MINIUPNPC, HAVE_NFD, FILM_EXPORT */
 
 /* Standard headers/functions available under Emscripten */
