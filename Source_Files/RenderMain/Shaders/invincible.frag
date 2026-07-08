@@ -37,6 +37,7 @@ float round(float n){
 	if ( n < 0.0 ) { nSign = -1.0; }; 
 	return nSign * floor(abs(n)+0.5); 
 } 
+
 void main(void) {
 	float blockSize = round((logicalHeight/320.0) * (pixelHeight/logicalHeight));
 	blockSize = max(blockSize, 1.0);

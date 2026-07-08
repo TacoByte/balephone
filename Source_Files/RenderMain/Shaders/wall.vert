@@ -5,6 +5,7 @@ varying vec3 viewXY;
 varying vec3 viewDir;
 varying vec4 vertexColor;
 varying float classicDepth;
+
 void main(void) {
 	gl_Position  = gl_ModelViewProjectionMatrix * gl_Vertex;
 	gl_Position.z = gl_Position.z + depth*gl_Position.z/65536.0;

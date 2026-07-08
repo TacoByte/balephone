@@ -13,6 +13,7 @@ varying vec3 relDir;
 varying vec4 vertexColor;
 const float zoom = 1.205;
 const float pitch_adjust = 0.955;
+
 void main(void) {
 	vec3 facev = vec3(cos(yaw), sin(yaw), sin(pitch));
 	vec3 relv  = normalize(relDir);

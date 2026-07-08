@@ -5,6 +5,7 @@ uniform float strictDepthMode;
 varying vec3 viewDir;
 varying vec4 vertexColor;
 varying float classicDepth;
+
 void main(void) {
 	gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
 	classicDepth = gl_Position.z / 8192.0;

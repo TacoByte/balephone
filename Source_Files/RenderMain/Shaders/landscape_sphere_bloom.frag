@@ -11,6 +11,7 @@ varying float cosYaw;
 varying float sinYaw;
 uniform float offsetx; // azimuth in the sphere map
 const float M_PI = 3.14156;
+
 void main(void) {
 	mat3 rotateYaw = mat3(cosYaw, 0, sinYaw,
 						  0, 1, 0,
