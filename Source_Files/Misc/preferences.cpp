@@ -4136,7 +4136,11 @@ static void default_graphics_preferences(graphics_preferences_data *preferences)
 	preferences->screen_mode.translucent_map = false;
 	preferences->screen_mode.acceleration = _opengl_acceleration;
 	preferences->screen_mode.high_resolution = true;
+#ifdef __EMSCRIPTEN__
+	preferences->screen_mode.fullscreen = false;
+#else
 	preferences->screen_mode.fullscreen = true;
+#endif
 	preferences->screen_mode.fix_h_not_v = true;
 	preferences->screen_mode.bobbing_type = BobbingType::camera_and_weapon;
 	preferences->screen_mode.bit_depth = 32;
@@ -4319,6 +4323,17 @@ static bool validate_graphics_preferences(graphics_preferences_data *preferences
 	// Fix bool options
 	preferences->screen_mode.high_resolution = !!preferences->screen_mode.high_resolution;
 	preferences->screen_mode.fullscreen = !!preferences->screen_mode.fullscreen;
+#ifdef __EMSCRIPTEN__
+	// In the browser, fullscreen requests are deferred until the next user
+	// gesture, so a startup fullscreen pref makes the first click blow the
+	// page up to fullscreen. Run windowed; the page can offer its own
+	// fullscreen button via the Fullscreen API.
+	if (preferences->screen_mode.fullscreen)
+	{
+		preferences->screen_mode.fullscreen = false;
+		changed = true;
+	}
+#endif
 	preferences->screen_mode.draw_every_other_line = !!preferences->screen_mode.draw_every_other_line;
     preferences->screen_mode.fix_h_not_v = !!preferences->screen_mode.fix_h_not_v;
 
