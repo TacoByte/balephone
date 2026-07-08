@@ -77,7 +77,8 @@
 #include "preferences.h"
 
 #include <boost/algorithm/string/predicate.hpp>
-#include <boost/filesystem.hpp>
+#include <filesystem>
+#include <random>
 
 #ifdef HAVE_NFD
 #include "nfd.h"
@@ -85,8 +86,7 @@
 #endif
 
 namespace io = boost::iostreams;
-namespace sys = boost::system;
-namespace fs = boost::filesystem;
+namespace fs = std::filesystem;
 
 // From shell_sdl.cpp
 extern vector<DirectorySpecifier> data_search_path;
@@ -101,10 +101,20 @@ constexpr int o_binary = O_BINARY;
 constexpr int o_binary = 0;
 #endif
 
-static int to_posix_code_or_unknown(sys::error_code ec)
+static int to_posix_code_or_unknown(std::error_code ec)
 {
 	const auto cond = ec.default_error_condition();
-	return cond.category() == sys::generic_category() ? cond.value() : unknown_filesystem_error;
+	return cond.category() == std::generic_category() ? cond.value() : unknown_filesystem_error;
+}
+
+// std::filesystem's file_time_type epoch is implementation-defined; convert
+// through system_clock so callers keep getting time_t-like values.
+static TimeType fs_time_to_time_t(fs::file_time_type mtime)
+{
+	using namespace std::chrono;
+	const auto sys_time = time_point_cast<system_clock::duration>(
+		mtime - fs::file_time_type::clock::now() + system_clock::now());
+	return system_clock::to_time_t(sys_time);
 }
 
 #ifdef __WIN32__
@@ -388,7 +398,7 @@ bool FileSpecifier::Create(Typecode Type)
 // Create directory
 bool FileSpecifier::MakeDirectory()
 {
-	sys::error_code ec;
+	std::error_code ec;
 	const bool created_dir = fs::create_directory(utf8_to_path(name), ec);
 	err = ec.value() == 0 ? (created_dir ? 0 : EEXIST) : to_posix_code_or_unknown(ec);
 	return err == 0;
@@ -516,7 +526,7 @@ bool FileSpecifier::Exists()
 
 bool FileSpecifier::IsDir()
 {
-	sys::error_code ec;
+	std::error_code ec;
 	const bool is_dir = fs::is_directory(utf8_to_path(name), ec);
 	err = to_posix_code_or_unknown(ec);
 	return err == 0 && is_dir;
@@ -525,10 +535,10 @@ bool FileSpecifier::IsDir()
 // Get modification date
 TimeType FileSpecifier::GetDate()
 {
-	sys::error_code ec;
+	std::error_code ec;
 	const auto mtime = fs::last_write_time(utf8_to_path(name), ec);
 	err = to_posix_code_or_unknown(ec);
-	return err == 0 ? mtime : 0;
+	return err == 0 ? fs_time_to_time_t(mtime) : 0;
 }
 
 static const char * alephone_extensions[] = {
@@ -691,7 +701,7 @@ not_shapes: ;
 // Delete file
 bool FileSpecifier::Delete()
 {
-	sys::error_code ec;
+	std::error_code ec;
 	const bool removed = fs::remove(utf8_to_path(name), ec);
 	err = ec.value() == 0 ? (removed ? 0 : ENOENT) : to_posix_code_or_unknown(ec);
 	return err == 0;
@@ -699,7 +709,7 @@ bool FileSpecifier::Delete()
 
 bool FileSpecifier::Rename(const FileSpecifier& Destination)
 {
-	sys::error_code ec;
+	std::error_code ec;
 	fs::rename(utf8_to_path(name), utf8_to_path(Destination.name), ec);
 	err = to_posix_code_or_unknown(ec);
 	return err == 0;
@@ -802,7 +812,14 @@ bool FileSpecifier::SetNameWithPath(const char* NameWithPath, const DirectorySpe
 
 void FileSpecifier::SetTempName(const FileSpecifier& other)
 {
-	name = other.name + fs::unique_path("%%%%%%").string();
+	// std::filesystem has no unique_path(); generate a random 6-char suffix.
+	static const char hex[] = "0123456789abcdef";
+	static std::mt19937 rng{std::random_device{}()};
+	std::uniform_int_distribution<int> dist(0, 15);
+	std::string suffix;
+	for (int i = 0; i < 6; ++i)
+		suffix += hex[dist(rng)];
+	name = other.name + suffix;
 }
 
 // Get last element of path
@@ -881,15 +898,15 @@ bool FileSpecifier::ReadDirectory(vector<dir_entry> &vec)
 {
 	vec.clear();
 	
-	sys::error_code ec;
+	std::error_code ec;
 	for (fs::directory_iterator it(utf8_to_path(name), ec), end; it != end; it.increment(ec))
 	{
 		const auto& entry = *it;
-		sys::error_code ignored_ec;
+		std::error_code ignored_ec;
 		const auto type = entry.status(ignored_ec).type();
-		const bool is_dir = type == fs::directory_file;
+		const bool is_dir = type == fs::file_type::directory;
 		
-		if (!(is_dir || type == fs::regular_file))
+		if (!(is_dir || type == fs::file_type::regular))
 			continue; // skip special or failed-to-stat files
 		
 		const auto basename = entry.path().filename();
@@ -897,7 +914,7 @@ bool FileSpecifier::ReadDirectory(vector<dir_entry> &vec)
 		if (!is_dir && basename.native()[0] == '.')
 			continue; // skip dot-prefixed regular files
 		
-		vec.emplace_back(path_to_utf8(basename), is_dir, fs::last_write_time(entry.path(), ignored_ec));
+		vec.emplace_back(path_to_utf8(basename), is_dir, fs_time_to_time_t(fs::last_write_time(entry.path(), ignored_ec)));
 	} 
 	
 	err = to_posix_code_or_unknown(ec);

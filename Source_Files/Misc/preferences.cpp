@@ -132,8 +132,8 @@ static const size_t NUMBER_OF_NETWORK_GAME_PROTOCOL_NAMES = sizeof(sNetworkGameP
 // Have the prefs been inited?
 static bool PrefsInited = false;
 
-static std::vector<boost::filesystem::path> orphan_disabled_plugins;
-static std::vector<boost::filesystem::path> orphan_enabled_plugins;
+static std::vector<std::filesystem::path> orphan_disabled_plugins;
+static std::vector<std::filesystem::path> orphan_enabled_plugins;
 
 // Global preferences data
 struct graphics_preferences_data *graphics_preferences = NULL;
