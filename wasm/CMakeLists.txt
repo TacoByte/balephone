@@ -1,5 +1,5 @@
-# Emscripten/WebAssembly build of Aleph One (single-player, software renderer).
-# Configure with:  emcmake cmake -B build -S wasm  (from the repo root)
+# Emscripten/WebAssembly build of Aleph One.
+# Configure with:  emcmake cmake -B wasm/build -S wasm  (from the repo root)
 cmake_minimum_required(VERSION 3.20)
 project(AlephOneWasm CXX C)
 
@@ -312,7 +312,6 @@ target_compile_options(alephone PRIVATE
     -Wno-deprecated-declarations
 )
 
-set(GAME_DATA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/gamedata")
 set(ENGINE_DATA_DIR "${A1_ROOT}/data")
 
 target_link_options(alephone PRIVATE
@@ -339,8 +338,11 @@ target_link_options(alephone PRIVATE
     "-sFULL_ES2=1"
     "-sGL_ENABLE_GET_PROC_ADDRESS=1"
     "-lidbfs.js"
-    "--preload-file=${GAME_DATA_DIR}@/data/game"
+    # Engine support data only; game data (the data/Scenarios submodules,
+    # which live inside data/ and must not be swept into this bundle) is
+    # staged per-scenario below and fetched by the shell page at runtime.
     "--preload-file=${ENGINE_DATA_DIR}@/data/engine"
+    "--exclude-file=*/Scenarios/*"
 )
 
 target_link_libraries(alephone PRIVATE
@@ -362,4 +364,17 @@ add_custom_command(TARGET alephone POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/shell/index.html"
         "$<TARGET_FILE_DIR:alephone>/index.html"
+)
+
+# Stage game data (the data/Scenarios submodules) into build/gamedata/<slug>/
+# with a manifest.json per scenario; the shell page downloads the selected
+# scenario into the virtual filesystem before starting the engine.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_custom_target(gamedata ALL
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/package_scenarios.py"
+        "$<TARGET_FILE_DIR:alephone>/gamedata"
+        "${A1_ROOT}/data/Scenarios/Marathon"
+        "${A1_ROOT}/data/Scenarios/Marathon 2"
+        "${A1_ROOT}/data/Scenarios/Marathon Infinity"
+    COMMENT "Staging scenario data + manifests"
 )

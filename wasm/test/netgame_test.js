@@ -18,7 +18,7 @@ const MIME = {
 function startServer(port) {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
-      const file = path.join(BUILD_DIR, req.url.split('?')[0].replace(/^\//, '') || 'index.html');
+      const file = path.join(BUILD_DIR, decodeURIComponent(req.url.split('?')[0]).replace(/^\//, '') || 'index.html');
       fs.readFile(file, (err, data) => {
         if (err) { res.writeHead(404); res.end(); return; }
         res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
@@ -77,8 +77,8 @@ async function applyStep(page, who, step, logs) {
 
   // Boot both in parallel.
   await Promise.all([
-    pages.a.goto('http://127.0.0.1:8790/index.html', { waitUntil: 'domcontentloaded' }),
-    pages.b.goto('http://127.0.0.1:8790/index.html', { waitUntil: 'domcontentloaded' }),
+    pages.a.goto('http://127.0.0.1:8790/index.html?scenario=marathon2', { waitUntil: 'domcontentloaded' }),
+    pages.b.goto('http://127.0.0.1:8790/index.html?scenario=marathon2', { waitUntil: 'domcontentloaded' }),
   ]);
   await pages.a.waitForTimeout(14000);
 

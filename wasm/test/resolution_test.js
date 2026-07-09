@@ -14,7 +14,7 @@ const MIME = {
 function startServer(port) {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
-      const file = path.join(BUILD_DIR, req.url.split('?')[0].replace(/^\//, '') || 'index.html');
+      const file = path.join(BUILD_DIR, decodeURIComponent(req.url.split('?')[0]).replace(/^\//, '') || 'index.html');
       fs.readFile(file, (err, data) => {
         if (err) { res.writeHead(404); res.end(); return; }
         res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
@@ -39,7 +39,7 @@ async function measure(page, label) {
 }
 
 async function bootAndStartGame(page) {
-  await page.goto('http://127.0.0.1:8782/index.html', { waitUntil: 'domcontentloaded' });
+  await page.goto('http://127.0.0.1:8782/index.html?scenario=marathon2', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(13000);
   await measure(page, 'menu');
   const box = await (await page.$('canvas')).boundingBox();

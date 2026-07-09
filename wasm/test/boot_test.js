@@ -1,5 +1,6 @@
 // Headless boot test for the Aleph One wasm build.
 // Usage: node boot_test.js [seconds_to_run]
+// Env: SCENARIO=marathon|marathon2|infinity (default marathon2)
 const { chromium } = require('playwright');
 const fs = require('fs');
 const http = require('http');
@@ -14,7 +15,7 @@ const MIME = {
 function startServer(port) {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
-      const file = path.join(BUILD_DIR, req.url.split('?')[0].replace(/^\//, '') || 'index.html');
+      const file = path.join(BUILD_DIR, decodeURIComponent(req.url.split('?')[0]).replace(/^\//, '') || 'index.html');
       fs.readFile(file, (err, data) => {
         if (err) { res.writeHead(404); res.end(); return; }
         res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
@@ -39,14 +40,15 @@ function startServer(port) {
   page.on('pageerror', (err) => logs.push(`[pageerror] ${err.stack || err.message}`));
   page.on('crash', () => logs.push('[CRASH] page crashed'));
 
-  await page.goto('http://127.0.0.1:8777/index.html', { waitUntil: 'domcontentloaded' });
+  const scenario = process.env.SCENARIO || 'marathon2';
+  await page.goto(`http://127.0.0.1:8777/index.html?scenario=${scenario}`, { waitUntil: 'domcontentloaded' });
 
   const shots = [10, 25, runSeconds];
   const t0 = Date.now();
   for (const s of shots) {
     const wait = t0 + s * 1000 - Date.now();
     if (wait > 0) await page.waitForTimeout(wait);
-    await page.screenshot({ path: `shot_${s}s.png` });
+    await page.screenshot({ path: `shot_${scenario}_${s}s.png` });
     console.log(`--- screenshot at ${s}s ---`);
   }
 

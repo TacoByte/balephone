@@ -15,7 +15,7 @@ const MIME = {
 function startServer(port) {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
-      const file = path.join(BUILD_DIR, req.url.split('?')[0].replace(/^\//, '') || 'index.html');
+      const file = path.join(BUILD_DIR, decodeURIComponent(req.url.split('?')[0]).replace(/^\//, '') || 'index.html');
       fs.readFile(file, (err, data) => {
         if (err) { res.writeHead(404); res.end(); return; }
         res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
@@ -41,7 +41,7 @@ function startServer(port) {
   page.on('crash', () => logs.push('[CRASH]'));
 
   // Boot 1: write prefs (GL renderer + bloom flag).
-  await page.goto('http://127.0.0.1:8785/index.html', { waitUntil: 'domcontentloaded' });
+  await page.goto('http://127.0.0.1:8785/index.html?scenario=marathon2', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(13000);
   const flip = await page.evaluate(async () => {
     const M = window.__module;

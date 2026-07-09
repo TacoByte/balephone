@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Marathon 2: Durandal — Aleph One (WebAssembly)</title>
+<title>Aleph One (WebAssembly)</title>
 <style>
   html, body {
     margin: 0; padding: 0; height: 100%;
@@ -37,7 +37,7 @@
 <body>
 <div id="wrap">
   <div id="boot">
-    <div id="status">STANDBY // FETCHING ENGINE</div>
+    <div id="status">STANDBY</div>
     <div id="bar"><div id="barfill"></div></div>
   </div>
   <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
@@ -45,11 +45,32 @@
 <div id="roomcode"></div>
 <script src="alephone.js"></script>
 <script>
+  // Scenario data (staged under gamedata/<slug>/ by the build) is picked
+  // with ?scenario=marathon|marathon2|infinity; default Marathon 2.
+  const SCENARIOS = {
+    marathon:  'Marathon',
+    marathon2: 'Marathon 2: Durandal',
+    infinity:  'Marathon Infinity',
+  };
+  const params = new URLSearchParams(location.search);
+  const scenario = SCENARIOS[params.get('scenario')] ? params.get('scenario')
+                                                     : 'marathon2';
+  document.title = SCENARIOS[scenario] + ' — Aleph One (WebAssembly)';
+
   const statusEl = document.getElementById('status');
   const bar = document.getElementById('bar');
   const barfill = document.getElementById('barfill');
 
   const PERSIST_DIR = '/home/web_user/.alephone';
+  const GAME_DIR = '/data/game';
+
+  function setStatus(text, frac) {
+    statusEl.textContent = text.toUpperCase();
+    if (frac !== undefined) {
+      bar.style.display = 'block';
+      barfill.style.width = (100 * frac) + '%';
+    }
+  }
 
   // Scale the canvas to fill the window (letterboxed) regardless of the
   // engine's render resolution. SDL's emscripten driver rescales mouse
@@ -67,11 +88,41 @@
   });
   window.addEventListener('resize', fitCanvas);
 
+  // Download the scenario's files (manifest + contents) with progress.
+  async function fetchGameData(slug, onProgress) {
+    const base = 'gamedata/' + slug + '/';
+    const manifest = await (await fetch(base + 'manifest.json')).json();
+    let loaded = 0;
+    return Promise.all(manifest.files.map(async (f) => {
+      const res = await fetch(base + f.path);
+      if (!res.ok) throw new Error('fetch failed: ' + f.path);
+      const reader = res.body.getReader();
+      const chunks = [];
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        loaded += value.length;
+        onProgress(loaded / manifest.total);
+      }
+      const data = new Uint8Array(f.size);
+      let pos = 0;
+      for (const c of chunks) { data.set(c, pos); pos += c.length; }
+      return { path: f.path, data };
+    }));
+  }
+
+  setStatus('fetching game data', 0);
+
+  // Game data downloads while the browser fetches/compiles the engine.
+  const gameData = fetchGameData(scenario,
+    (frac) => setStatus('fetching game data', frac));
+
   AlephOne({
-    canvas: document.getElementById('canvas'),
-    arguments: ['/data/game'],
+    canvas: canvasEl,
+    arguments: [GAME_DIR],
     // Multiplayer relay. Override with ?relay=wss://host:port if needed.
-    relayUrl: new URLSearchParams(location.search).get('relay') || undefined,
+    relayUrl: params.get('relay') || undefined,
     // Called by the engine's relay transport once a room is created/joined.
     // Member 1 is the gatherer; show their room code so they can share it.
     onRoomCode(code, memberId) {
@@ -83,19 +134,19 @@
         el.style.display = 'none';
       }
     },
-    setStatus(text) {
-      if (!text) return;
-      statusEl.textContent = text.toUpperCase();
-      const m = text.match(/\((\d+(\.\d+)?)\/(\d+(\.\d+)?)\)/);
-      if (m) {
-        bar.style.display = 'block';
-        barfill.style.width = (100 * parseFloat(m[1]) / parseFloat(m[3])) + '%';
-      }
-    },
     print(text) { console.log(text); },
     printErr(text) { console.warn(text); },
-  }).then((Module) => {
+  }).then(async (Module) => {
     window.__module = Module; // console/testing access
+
+    // Unpack the downloaded scenario into the virtual filesystem.
+    const files = await gameData;
+    for (const f of files) {
+      const dir = GAME_DIR + '/' + f.path.split('/').slice(0, -1).join('/');
+      Module.FS.mkdirTree(dir);
+      Module.FS.writeFile(GAME_DIR + '/' + f.path, f.data);
+    }
+
     // Persist prefs + saved games in IndexedDB, then start the game.
     Module.FS.mkdirTree(PERSIST_DIR);
     Module.FS.mount(Module.FS.filesystems.IDBFS, {}, PERSIST_DIR);
@@ -112,8 +163,11 @@
       });
 
       document.getElementById('boot').classList.add('hidden');
-      Module.callMain(['/data/game']);
+      Module.callMain([GAME_DIR]);
     });
+  }).catch((e) => {
+    setStatus('boot failed: ' + e.message);
+    console.error(e);
   });
 </script>
 </body>
