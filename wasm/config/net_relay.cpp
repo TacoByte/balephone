@@ -151,9 +151,37 @@ EM_JS(int, js_net_status, (), {
   return st ? st.status : 0;
 });
 
-EM_JS(void, js_net_room_code, (char* buf, int maxLen), {
+// Shareable join link for the current room: the page's own URL (scenario,
+// relay overrides etc. preserved) plus ?join=CODE. Empty if not connected.
+EM_JS(void, js_net_share_url, (char* buf, int maxLen), {
   var st = globalThis.__a1net;
-  stringToUTF8((st && st.status === 2) ? st.room : '', buf, maxLen);
+  if (!st || st.status !== 2 || typeof location === 'undefined') {
+    stringToUTF8('', buf, maxLen);
+    return;
+  }
+  var u = new URL(location.href);
+  if (u.pathname.endsWith('/index.html'))
+    u.pathname = u.pathname.slice(0, -('index.html'.length));
+  u.searchParams.set('join', st.room);
+  stringToUTF8(u.toString(), buf, maxLen);
+});
+
+EM_JS(void, js_copy_clipboard, (const char* ptr), {
+  var text = UTF8ToString(ptr);
+  Module['__a1LastCopy'] = text; // testing access
+  function fallback() {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).catch(fallback);
+  } else {
+    fallback();
+  }
 });
 
 EM_JS(int, js_net_my_id, (), {
@@ -484,11 +512,16 @@ std::optional<IPaddress> NetworkInterface::resolve_address(const std::string& ho
 extern void mytm_pump();        // mytm_wasm.cpp: run due hub/spoke tick tasks
 extern void NetDDPPumpWasm();   // network_udp.cpp: drain datagrams to handler
 
-// Current relay room code ("" when not connected); the gather dialog shows
-// it so the gatherer can share it with joiners.
-extern "C" void wasm_relay_room_code(char* buf, int maxlen)
+// Shareable join link for the current room ("" when not connected); the
+// gather dialog displays it with a copy button.
+extern "C" void wasm_relay_share_url(char* buf, int maxlen)
 {
-	js_net_room_code(buf, maxlen);
+	js_net_share_url(buf, maxlen);
+}
+
+extern "C" void wasm_copy_to_clipboard(const char* text)
+{
+	js_copy_clipboard(text);
 }
 
 extern "C" void wasm_net_idle(void)

@@ -89,8 +89,10 @@ Apr 10, 2003 (Woody Zenfell):
 #include "network_dialogs.h"
 
 #ifdef __EMSCRIPTEN__
-// wasm/config/net_relay.cpp: current relay room code ("" if not connected)
-extern "C" void wasm_relay_room_code(char* buf, int maxlen);
+// wasm/config/net_relay.cpp: shareable join link for the current relay room
+// ("" if not connected), and clipboard access for the copy button.
+extern "C" void wasm_relay_share_url(char* buf, int maxlen);
+extern "C" void wasm_copy_to_clipboard(const char* text);
 #endif
 #include "TextStrings.h"
 
@@ -2414,30 +2416,7 @@ public:
 	SdlGatherDialog(bool remote_hub_mode) : GatherDialog(remote_hub_mode)
 	{
 		vertical_placer *placer = new vertical_placer;
-#ifdef __EMSCRIPTEN__
-		// The relay room is open by now (NetGather ran); show its code next
-		// to the title so the gatherer can share it with joiners. It shares
-		// the title row (the dialog is already near full height with the
-		// chat panel) but uses the item theme class, so it stands out in a
-		// different color.
-		char roomcode[16];
-		wasm_relay_room_code(roomcode, sizeof(roomcode));
-		if (roomcode[0])
-		{
-			char roomcode_text[32];
-			snprintf(roomcode_text, sizeof(roomcode_text), "CODE: %s", roomcode);
-			horizontal_placer *title_row = new horizontal_placer(24);
-			title_row->dual_add(new w_title("GATHER NETWORK GAME"), m_dialog);
-			title_row->dual_add(new w_static_text(roomcode_text, ITEM_WIDGET), m_dialog);
-			placer->add(title_row, true);
-		}
-		else
-		{
-			placer->dual_add(new w_title("GATHER NETWORK GAME"), m_dialog);
-		}
-#else
 		placer->dual_add(new w_title("GATHER NETWORK GAME"), m_dialog);
-#endif
 		placer->add(new w_spacer());
 	
 		// m_dialog.add(new w_static_text("Players on Network"));
@@ -2445,8 +2424,25 @@ public:
 		w_joining_players_in_room* foundplayers_w = new w_joining_players_in_room(NULL, 320, 3);
 		placer->dual_add(foundplayers_w, m_dialog);
 	
-		horizontal_placer *autogather_placer = new horizontal_placer(get_theme_space(ITEM_WIDGET), true);
 		w_toggle* autogather_w = new w_toggle(false);
+#ifdef __EMSCRIPTEN__
+		// The relay room is open by now (NetGather ran); the shareable join
+		// link (page URL + ?join=CODE) and its copy button share the
+		// Auto-Gather row, since the dialog is already near full height.
+		// Unbalanced placer: the long URL must not set every cell's width.
+		horizontal_placer *autogather_placer = new horizontal_placer(get_theme_space(ITEM_WIDGET), false);
+		static char share_url[256];
+		wasm_relay_share_url(share_url, sizeof(share_url));
+		if (share_url[0])
+		{
+			autogather_placer->dual_add(new w_static_text(share_url, ITEM_WIDGET), m_dialog);
+			autogather_placer->dual_add(new w_tiny_button("COPY", [](void*) {
+				wasm_copy_to_clipboard(share_url);
+			}), m_dialog);
+		}
+#else
+		horizontal_placer *autogather_placer = new horizontal_placer(get_theme_space(ITEM_WIDGET), true);
+#endif
 		autogather_placer->dual_add(autogather_w->label("Auto-Gather"), m_dialog);
 		autogather_placer->dual_add(autogather_w, m_dialog);
 

@@ -110,6 +110,10 @@ Feb 13, 2003 (Woody Zenfell):
 
 #include "cseries.h" // sorry ryan, nov. 4
 #include <array>
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 #include <string.h>
 #include <stdlib.h>
 #include <limits.h>
@@ -1027,6 +1031,31 @@ bool is_network_pregame = false;
 
 bool idle_game_state(uint64_t time)
 {
+#ifdef __EMSCRIPTEN__
+	// A shared game link (?join=CODE in the page URL) skips the intro
+	// screens and opens the join dialog directly; the room code itself is
+	// prefilled from preferences (see read_preferences in preferences.cpp).
+	static bool auto_join_pending = true;
+	if (auto_join_pending &&
+	    (get_game_state() == _display_main_menu ||
+	     get_game_state() == _display_intro_screens ||
+	     get_game_state() == _display_intro_screens_for_demo))
+	{
+		auto_join_pending = false;
+		if (EM_ASM_INT({
+			return new URLSearchParams(location.search).has('join') ? 1 : 0;
+		}))
+		{
+			if (get_game_state() != _display_main_menu)
+			{
+				stop_interface_fade();
+				display_main_menu();
+			}
+			do_menu_item_command(mInterface, iJoinGame, false);
+		}
+	}
+#endif
+
 	auto machine_ticks_elapsed = time - game_state.last_ticks_on_idle;
 
 	if(machine_ticks_elapsed || game_state.phase==0)

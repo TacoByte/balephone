@@ -3615,6 +3615,24 @@ void read_preferences ()
 	validate_player_preferences(player_preferences);
 	validate_input_preferences(input_preferences);
 	validate_environment_preferences(environment_preferences);
+
+#ifdef __EMSCRIPTEN__
+	// A shared game link (?join=CODE in the page URL) prefills the join
+	// dialog's room code field, overriding whatever was joined last.
+	{
+		char join_code[32] = "";
+		EM_ASM({
+			var code = new URLSearchParams(location.search).get('join') || '';
+			stringToUTF8(code.toUpperCase(), $0, $1);
+		}, join_code, (int)sizeof(join_code));
+		if (join_code[0])
+		{
+			strncpy(network_preferences->join_address, join_code,
+			        sizeof(network_preferences->join_address) - 1);
+			network_preferences->join_by_address = true;
+		}
+	}
+#endif
 	
 	// jkvw: If we try to load a default file, but can't, we'll have set the game error.
 	//       But that's not useful, because we're just going to try loading the file
