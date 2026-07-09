@@ -10,6 +10,8 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+option(A1_WASM_PERF_TESTING "Enable browser benchmark instrumentation" OFF)
+
 get_filename_component(A1_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 set(SF "${A1_ROOT}/Source_Files")
 set(WASM_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/prefix")
@@ -304,6 +306,10 @@ target_compile_definitions(alephone PRIVATE
     HAVE_CONFIG_H
     AL_LIBTYPE_STATIC
 )
+
+if(A1_WASM_PERF_TESTING)
+    target_compile_definitions(alephone PRIVATE A1_WASM_PERF_TESTING)
+endif()
 
 target_compile_options(alephone PRIVATE
     ${EM_PORT_COMPILE_FLAGS}

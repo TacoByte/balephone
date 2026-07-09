@@ -11,3 +11,4 @@ prefix/
 test/node_modules/
 test/*.png
 test/*.log
+test/results/

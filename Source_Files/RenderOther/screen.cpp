@@ -33,6 +33,22 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(__EMSCRIPTEN__) && defined(A1_WASM_PERF_TESTING)
+#include <emscripten/emscripten.h>
+
+static unsigned int wasm_perf_frame_counter = 0;
+
+extern "C" EMSCRIPTEN_KEEPALIVE unsigned int wasm_perf_frame_count()
+{
+	return wasm_perf_frame_counter;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void wasm_perf_reset_frame_count()
+{
+	wasm_perf_frame_counter = 0;
+}
+#endif
+
 #ifdef HAVE_OPENGL
 #include "OGL_Headers.h"
 #include "OGL_Blitter.h"
@@ -2272,6 +2288,9 @@ bool MainScreenIsOpenGL()
 }
 void MainScreenSwap()
 {
+#if defined(__EMSCRIPTEN__) && defined(A1_WASM_PERF_TESTING)
+	++wasm_perf_frame_counter;
+#endif
 	SDL_GL_SwapWindow(main_screen);
 }
 void MainScreenCenterMouse()

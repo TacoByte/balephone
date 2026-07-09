@@ -30,6 +30,10 @@
 #include "cseries.h"
 #include <math.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 #include "mouse.h"
 #include "player.h"
 #include "shell.h"
@@ -42,6 +46,25 @@ static uint8 button_mask = 0;		// Mask of enabled buttons
 static fixed_yaw_pitch mouselook_delta = {0, 0};
 static _fixed snapshot_delta_scrollwheel;
 static int snapshot_delta_x, snapshot_delta_y;
+
+#ifdef __EMSCRIPTEN__
+// SDL keeps relative_mode=true even after the browser drops pointer lock;
+// hit the DOM API directly so pause/unpause actually captures/releases.
+EM_JS(void, wasm_release_pointer_lock, (), {
+  if (document.pointerLockElement) {
+    document.exitPointerLock();
+  }
+  if (Module['canvas']) {
+    Module['canvas'].style.cursor = 'default';
+  }
+});
+
+EM_JS(void, wasm_show_canvas_cursor, (), {
+  if (Module['canvas']) {
+    Module['canvas'].style.cursor = 'default';
+  }
+});
+#endif
 
 
 /*
@@ -72,7 +95,12 @@ void exit_mouse(short type)
 {
 	if (type != _keyboard_or_game_pad) {
 		SDL_SetRelativeMouseMode(SDL_FALSE);
+#ifdef __EMSCRIPTEN__
+		wasm_release_pointer_lock();
+#endif
 		mouse_active = false;
+		snapshot_delta_x = snapshot_delta_y = 0;
+		mouselook_delta = {0, 0};
 	}
 }
 
@@ -173,6 +201,9 @@ void hide_cursor(void)
 void show_cursor(void)
 {
 	SDL_ShowCursor(1);
+#ifdef __EMSCRIPTEN__
+	wasm_show_canvas_cursor();
+#endif
 }
 
 
@@ -186,6 +217,23 @@ void mouse_scroll(bool up)
 
 void mouse_moved(int delta_x, int delta_y)
 {
+	if (!mouse_active)
+		return;
 	snapshot_delta_x += delta_x;
 	snapshot_delta_y += delta_y;
+}
+
+// SDL's relative_mode flag can stay true after the browser drops pointer lock
+// (ESC, tab away, etc.).  Check the DOM, not SDL_GetRelativeMouseMode().
+bool mouse_capture_lost_externally(void)
+{
+#ifdef __EMSCRIPTEN__
+	if (!mouse_active)
+		return false;
+	return EM_ASM_INT({
+		return document.pointerLockElement ? 0 : 1;
+	});
+#else
+	return false;
+#endif
 }

@@ -121,6 +121,22 @@
 #include <emscripten.h>
 // wasm/config/net_relay.cpp: main-loop network pump (no network threads on web)
 extern "C" void wasm_net_idle(void);
+
+#ifdef A1_WASM_PERF_TESTING
+static bool wasm_perf_ignore_inactive_fps_cap = false;
+
+extern "C" EMSCRIPTEN_KEEPALIVE void wasm_perf_set_ignore_inactive_fps_cap(int enabled)
+{
+	wasm_perf_ignore_inactive_fps_cap = enabled != 0;
+	if (wasm_perf_ignore_inactive_fps_cap && get_game_state() == _game_in_progress)
+		resume_game();
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE int wasm_perf_get_ignore_inactive_fps_cap()
+{
+	return wasm_perf_ignore_inactive_fps_cap ? 1 : 0;
+}
+#endif
 #endif
 
 // Data directories
@@ -796,8 +812,28 @@ void main_event_loop(void)
 		execute_timer_tasks(machine_tick_count());
 		idle_game_state(machine_tick_count());
 
+#ifdef __EMSCRIPTEN__
+		// Browser ESC releases pointer lock without SDL telling us to pause.
+		bool pointer_lock_should_pause =
+			mouse_capture_lost_externally() &&
+			get_game_state() == _game_in_progress &&
+			get_keyboard_controller_status();
+#ifdef A1_WASM_PERF_TESTING
+		pointer_lock_should_pause =
+			pointer_lock_should_pause && !wasm_perf_ignore_inactive_fps_cap;
+#endif
+		if (pointer_lock_should_pause)
+		{
+			pause_game();
+		}
+#endif
+
 		auto fps_target = get_fps_target();
-		if (!get_keyboard_controller_status())
+		bool controller_inactive = !get_keyboard_controller_status();
+#if defined(__EMSCRIPTEN__) && defined(A1_WASM_PERF_TESTING)
+		controller_inactive = controller_inactive && !wasm_perf_ignore_inactive_fps_cap;
+#endif
+		if (controller_inactive)
 		{
 			fps_target = 30;
 		}
@@ -955,6 +991,16 @@ static void handle_game_key(const SDL_Event &event)
 	{
 		if (sc == SDL_SCANCODE_ESCAPE || sc == AO_SCANCODE_JOYSTICK_ESCAPE) // (ZZZ) Quit gesture (now safer)
 		{
+#ifdef __EMSCRIPTEN__
+			// Browser pointer lock ignores ESC unless we pause ourselves.
+			if (get_game_state() == _game_in_progress &&
+			    get_keyboard_controller_status() &&
+			    player_controlling_game())
+			{
+				pause_game();
+			}
+			else
+#endif
 			if(!player_controlling_game())
 				do_menu_item_command(mGame, iQuitGame, false);
 			else {
@@ -1368,7 +1414,8 @@ static void process_event(const SDL_Event &event)
 {
 	switch (event.type) {
 	case SDL_MOUSEMOTION:
-		if (get_game_state() == _game_in_progress)
+		if (get_game_state() == _game_in_progress &&
+		    get_keyboard_controller_status())
 		{
 			mouse_moved(event.motion.xrel, event.motion.yrel);
 		}
@@ -1459,7 +1506,11 @@ static void process_event(const SDL_Event &event)
 	case SDL_WINDOWEVENT:
 		switch (event.window.event) {
 			case SDL_WINDOWEVENT_FOCUS_LOST:
-				if (get_game_state() == _game_in_progress && get_keyboard_controller_status() && !Movie::instance()->IsRecording() && shell_options.replay_directory.empty()) {
+				if (get_game_state() == _game_in_progress && get_keyboard_controller_status() && !Movie::instance()->IsRecording() && shell_options.replay_directory.empty()
+#if defined(__EMSCRIPTEN__) && defined(A1_WASM_PERF_TESTING)
+				    && !wasm_perf_ignore_inactive_fps_cap
+#endif
+				) {
 					pause_game();
 				}
 

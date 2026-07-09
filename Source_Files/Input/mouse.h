@@ -39,6 +39,7 @@ void recenter_mouse(void);
 void mouse_buttons_become_keypresses(Uint8* ioKeyMap);
 void mouse_scroll(bool up);
 void mouse_moved(int delta_x, int delta_y);
+bool mouse_capture_lost_externally(void);
 
 #define NUM_SDL_REAL_MOUSE_BUTTONS 5
 #define NUM_SDL_MOUSE_BUTTONS 7   		  // two scroll-wheel buttons
