@@ -79,6 +79,10 @@ May 22, 2003 (Woody Zenfell):
 #include "tags.h"
 #include "Logging.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 #include <string.h>
 #include <stdlib.h>
 
@@ -1429,10 +1433,12 @@ static void graphics_dialog(void *arg)
 
 	    short renderer = static_cast<short>(renderer_w->get_selection());
 	    assert(renderer >= 0);
+	    bool renderer_changed = false;
 	    if(renderer != graphics_preferences->screen_mode.acceleration) {
 		    graphics_preferences->screen_mode.acceleration = renderer;
 		    if (renderer) graphics_preferences->screen_mode.bit_depth = 32;
 		    changed = true;
+		    renderer_changed = true;
 	    }
 	    
 	    short resolution = static_cast<short>(size_w->get_selection());
@@ -1532,6 +1538,20 @@ static void graphics_dialog(void *arg)
 	    if (changed) {
 			Plugins::instance()->invalidate();
 		    write_preferences();
+
+#ifdef __EMSCRIPTEN__
+			if (renderer_changed) {
+				// A canvas permanently commits to its first rendering context
+				// type (2D for the software renderer, WebGL for OpenGL), so
+				// switching renderers cannot recreate the window in place.
+				// Prefs are written; flush them to IndexedDB and reload the
+				// page to boot into the new renderer.
+				EM_ASM({
+					FS.syncfs(false, function() { location.reload(); });
+				});
+				return;
+			}
+#endif
 
 			ResetAllMMLValues();
 			LoadBaseMMLScripts(true);
