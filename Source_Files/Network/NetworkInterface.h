@@ -19,6 +19,16 @@
 #ifndef NETWORK_INTERFACE_H
 #define NETWORK_INTERFACE_H
 
+#ifdef __EMSCRIPTEN__
+
+// Browser build: same interface, but implemented over a WebSocket relay
+// instead of asio sockets (browsers have no raw TCP/UDP). Addresses are
+// virtual: the relay assigns each room member a small id, mapped to
+// 10.0.0.<id>. See wasm/config/net_relay.cpp.
+#include "../../wasm/config/NetworkInterfaceWasm.h"
+
+#else // !__EMSCRIPTEN__
+
 #include <asio.hpp>
 #include <string>
 #include <optional>
@@ -119,5 +129,7 @@ public:
     std::unique_ptr<TCPlistener> tcp_open_listener(uint16_t port);
     std::optional<IPaddress> resolve_address(const std::string& host, uint16_t port);
 };
+
+#endif // !__EMSCRIPTEN__
 
 #endif // NETWORK_INTERFACE_H
