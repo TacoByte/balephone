@@ -98,8 +98,7 @@ EM_JS(void, js_net_connect, (const char* roomPtr, int roomLen, int create), {
         var rl = u8[2];
         st.room = new TextDecoder().decode(u8.slice(3, 3 + rl));
         st.status = 2;
-        Module['__a1RoomCode'] = st.room;
-        if (Module['onRoomCode']) Module['onRoomCode'](st.room, st.myId);
+        Module['__a1RoomCode'] = st.room; // console/testing access
         break;
       }
       case 0x82: { // DGRAM
@@ -150,6 +149,11 @@ EM_JS(void, js_net_connect, (const char* roomPtr, int roomLen, int create), {
 EM_JS(int, js_net_status, (), {
   var st = globalThis.__a1net;
   return st ? st.status : 0;
+});
+
+EM_JS(void, js_net_room_code, (char* buf, int maxLen), {
+  var st = globalThis.__a1net;
+  stringToUTF8((st && st.status === 2) ? st.room : '', buf, maxLen);
 });
 
 EM_JS(int, js_net_my_id, (), {
@@ -479,6 +483,13 @@ std::optional<IPaddress> NetworkInterface::resolve_address(const std::string& ho
 
 extern void mytm_pump();        // mytm_wasm.cpp: run due hub/spoke tick tasks
 extern void NetDDPPumpWasm();   // network_udp.cpp: drain datagrams to handler
+
+// Current relay room code ("" when not connected); the gather dialog shows
+// it so the gatherer can share it with joiners.
+extern "C" void wasm_relay_room_code(char* buf, int maxlen)
+{
+	js_net_room_code(buf, maxlen);
+}
 
 extern "C" void wasm_net_idle(void)
 {

@@ -87,6 +87,11 @@ Apr 10, 2003 (Woody Zenfell):
 
 // for game types...
 #include "network_dialogs.h"
+
+#ifdef __EMSCRIPTEN__
+// wasm/config/net_relay.cpp: current relay room code ("" if not connected)
+extern "C" void wasm_relay_room_code(char* buf, int maxlen);
+#endif
 #include "TextStrings.h"
 
 #include "network_dialog_widgets_sdl.h"
@@ -2411,6 +2416,20 @@ public:
 		vertical_placer *placer = new vertical_placer;
 		placer->dual_add(new w_title("GATHER NETWORK GAME"), m_dialog);
 		placer->add(new w_spacer());
+
+#ifdef __EMSCRIPTEN__
+		// The relay room is open by now (NetGather ran); show its code so
+		// the gatherer can share it with joiners.
+		char roomcode[16];
+		wasm_relay_room_code(roomcode, sizeof(roomcode));
+		if (roomcode[0])
+		{
+			char roomcode_text[64];
+			snprintf(roomcode_text, sizeof(roomcode_text), "Room code: %s", roomcode);
+			placer->dual_add(new w_static_text(roomcode_text, TITLE_WIDGET), m_dialog);
+			placer->add(new w_spacer(), true);
+		}
+#endif
 	
 		// m_dialog.add(new w_static_text("Players on Network"));
 
