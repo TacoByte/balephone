@@ -1,6 +1,6 @@
 // Boots once, flips prefs to the OpenGL (shader) renderer, reloads, starts a
-// game, and screenshots. Checks the renderer actually initialized (no
-// fallback-to-software warning) and the page stays responsive.
+// game, and screenshots. Checks the renderer actually initialized, the game
+// frame differs from the menu, and the page stays responsive.
 const { chromium } = require('playwright');
 const fs = require('fs');
 const http = require('http');
@@ -53,30 +53,42 @@ function startServer(port) {
     return txt.match(/scmode_accel="\d+"/)[0];
   }).catch(e => 'ERR ' + e.message);
   console.log('prefs flip:', flip);
+  if (flip !== 'scmode_accel="1"') throw new Error(`preference update failed: ${flip}`);
 
   // Boot 2: OpenGL renderer.
   logs.length = 0;
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(14000);
-  await page.screenshot({ path: 'gl_1_menu.png' });
+  const menuScreenshot = await page.screenshot({ path: 'gl_1_menu.png' });
 
   const box = await (await page.$('canvas')).boundingBox();
   await page.mouse.click(box.x + 0.325 * box.width, box.y + 0.403 * box.height);
   await page.waitForTimeout(4000);
   await page.keyboard.press('Space');
   await page.waitForTimeout(8000);
-  await page.screenshot({ path: 'gl_2_game.png', timeout: 8000 }).catch(() => console.log('SCREENSHOT TIMEOUT (hung)'));
+  const gameScreenshot = await page.screenshot({ path: 'gl_2_game.png', timeout: 8000 });
+  if (menuScreenshot.equals(gameScreenshot)) {
+    throw new Error('game screenshot is identical to the menu');
+  }
 
-  // Move a bit, screenshot again.
-  await page.keyboard.down('ArrowUp');
-  await page.waitForTimeout(1200);
-  await page.keyboard.up('ArrowUp');
-  await page.screenshot({ path: 'gl_3_moved.png', timeout: 8000 }).catch(() => console.log('SCREENSHOT TIMEOUT (hung)'));
+  const canvasState = await page.evaluate(() => {
+    const canvas = document.getElementById('canvas');
+    return { width: canvas.width, height: canvas.height };
+  });
+  if (!canvasState.width || !canvasState.height) throw new Error('canvas is not responsive');
+  await page.screenshot({ path: 'gl_3_responsive.png', timeout: 8000 });
 
   fs.writeFileSync('gl_console.log', logs.join('\n'));
   const relevant = logs.filter(l => /GL|gl4es|shader|render|WARNING|error|Aborted/i.test(l));
   console.log('--- relevant console ---');
   console.log(relevant.slice(-25).join('\n'));
+  if (!logs.some((line) => line.includes('GL_RENDERER: GL4ES using WebKit WebGL'))) {
+    throw new Error('OpenGL renderer did not initialize');
+  }
+  const fatalLogs = logs.filter((line) =>
+    /CRASH|Aborted|Failed to initialize OpenGL|Retrying with Software renderer/i.test(line),
+  );
+  if (fatalLogs.length) throw new Error(fatalLogs.join('\n'));
 
   await browser.close().catch(() => {});
   server.close();

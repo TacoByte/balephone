@@ -28,6 +28,17 @@
 
 #define MAXIMUM_VERTICES_PER_WORLD_POLYGON (MAXIMUM_VERTICES_PER_POLYGON+4)
 
+#ifdef __EMSCRIPTEN__
+// WebGL supports triangle fans directly, while gl4es must translate the
+// legacy GL_POLYGON and GL_QUADS modes. Map polygons are convex and every
+// quad drawn in this renderer contains exactly four perimeter-ordered points.
+static constexpr GLenum kConvexPolygonPrimitive = GL_TRIANGLE_FAN;
+static constexpr GLenum kQuadPrimitive = GL_TRIANGLE_FAN;
+#else
+static constexpr GLenum kConvexPolygonPrimitive = GL_POLYGON;
+static constexpr GLenum kQuadPrimitive = GL_QUADS;
+#endif
+
 class Blur {
 
 private:
@@ -768,11 +779,11 @@ void RenderRasterize_Shader::render_node_floor_or_ceiling(clipping_window_data *
 		glVertexPointer(3, GL_FLOAT, 0, vertex_array);
 		glTexCoordPointer(2, GL_FLOAT, 0, texcoord_array);
 
-		glDrawArrays(GL_POLYGON, 0, vertex_count);
+		glDrawArrays(kConvexPolygonPrimitive, 0, vertex_count);
 
 		// see note 2 above; pulsate uniform should stay set from setupWall call
 		if (setupGlow(view, TMgr, 0, intensity, weaponFlare, selfLuminosity, offset, renderStep)) {
-			glDrawArrays(GL_POLYGON, 0, vertex_count);
+			glDrawArrays(kConvexPolygonPrimitive, 0, vertex_count);
 		}
 
 		Shader::disable();
@@ -894,10 +905,10 @@ void RenderRasterize_Shader::render_node_side(clipping_window_data *window, vert
 			glVertexPointer(3, GL_FLOAT, 0, vertex_array);
 			glTexCoordPointer(2, GL_FLOAT, 0, texcoord_array);
 			
-			glDrawArrays(GL_QUADS, 0, vertex_count);
+			glDrawArrays(kQuadPrimitive, 0, vertex_count);
 
 			if (setupGlow(view, TMgr, wobble, intensity, weaponFlare, selfLuminosity, offset, renderStep)) {
-				glDrawArrays(GL_QUADS, 0, vertex_count);
+				glDrawArrays(kQuadPrimitive, 0, vertex_count);
 			}
 
 			Shader::disable();
@@ -1239,10 +1250,10 @@ void RenderRasterize_Shader::_render_node_object_helper(render_object_data *obje
 	glVertexPointer(3, GL_FLOAT, 0, vertex_array);
 	glTexCoordPointer(2, GL_FLOAT, 0, texcoord_array);
 
-	glDrawArrays(GL_QUADS, 0, 4);
+	glDrawArrays(kQuadPrimitive, 0, 4);
 
 	if (setupGlow(view, TMgr, 0, 1, weaponFlare, selfLuminosity, offset, renderStep)) {
-		glDrawArrays(GL_QUADS, 0, 4);
+		glDrawArrays(kQuadPrimitive, 0, 4);
 	}
         
 	glEnable(GL_DEPTH_TEST);
@@ -1441,10 +1452,10 @@ void RenderRasterize_Shader::render_viewer_sprite(rectangle_definition& RenderRe
 	glEnable(GL_TEXTURE_2D);
 		
 	// Go!
-        glDrawArrays(GL_POLYGON,0,4);
+        glDrawArrays(kConvexPolygonPrimitive,0,4);
 
         if (setupGlow(view, TMgr, 0, 1, weaponFlare, selfLuminosity, 0, renderStep)) {
-            glDrawArrays(GL_QUADS, 0, 4);
+            glDrawArrays(kQuadPrimitive, 0, 4);
 	}
 	
 	glEnable(GL_DEPTH_TEST);
