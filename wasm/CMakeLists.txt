@@ -359,12 +359,16 @@ target_link_libraries(alephone PRIVATE
 
 set_target_properties(alephone PROPERTIES SUFFIX ".js")
 
-# Keep the shell page in the build dir up to date.
-add_custom_command(TARGET alephone POST_BUILD
+# Keep the shell page in the build dir up to date (a POST_BUILD hook would
+# only run when the engine relinks, missing shell-only edits).
+add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/index.html"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/shell/index.html"
-        "$<TARGET_FILE_DIR:alephone>/index.html"
+        "${CMAKE_CURRENT_BINARY_DIR}/index.html"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/shell/index.html"
 )
+add_custom_target(shellpage ALL DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/index.html")
 
 # Stage game data (the data/Scenarios submodules) into build/gamedata/<slug>/
 # with a manifest.json per scenario; the shell page downloads the selected

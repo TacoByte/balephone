@@ -46,7 +46,7 @@
 <script src="alephone.js"></script>
 <script>
   // Scenario data (staged under gamedata/<slug>/ by the build) is picked
-  // with ?scenario=marathon|marathon2|infinity; default Marathon 2.
+  // with ?scenario=marathon|marathon2|infinity; default Marathon Infinity.
   const SCENARIOS = {
     marathon:  'Marathon',
     marathon2: 'Marathon 2: Durandal',
@@ -54,7 +54,7 @@
   };
   const params = new URLSearchParams(location.search);
   const scenario = SCENARIOS[params.get('scenario')] ? params.get('scenario')
-                                                     : 'marathon2';
+                                                     : 'infinity';
   document.title = SCENARIOS[scenario] + ' — Aleph One (WebAssembly)';
 
   const statusEl = document.getElementById('status');
