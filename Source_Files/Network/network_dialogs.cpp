@@ -2507,6 +2507,11 @@ public:
 	{
 		SDL_Keymod m = SDL_GetModState();
 		if ((m & KMOD_ALT) || (m & KMOD_GUI)) skipToMetaserver = !skipToMetaserver;
+#ifdef __EMSCRIPTEN__
+		// No metaserver on the web; joining always goes through relay room
+		// codes typed into the address field.
+		skipToMetaserver = false;
+#endif
 
 		vertical_placer *placer = new vertical_placer;
 		placer->dual_add(new w_title("JOIN NETWORK GAME"), m_dialog);
@@ -2539,21 +2544,34 @@ public:
 		
 		prejoin_table->add_row(new w_spacer(), true);
 		
+		// The metaserver button and the join-by-address toggle stay
+		// constructed on the web build (the shared dialog logic reads them)
+		// but are left out of the layout: there is no metaserver or LAN
+		// discovery there, and the address field takes relay room codes.
 		w_button* join_by_metaserver_w = new w_button("FIND INTERNET GAME");
+		w_toggle* hint_w = new w_toggle(false);
+		w_text_entry* hint_address_w = new w_text_entry(kJoinHintingAddressLength, "");
+#ifdef __EMSCRIPTEN__
+		prejoin_table->dual_add(hint_address_w->label("Room code"), m_dialog);
+		prejoin_table->dual_add(hint_address_w, m_dialog);
+
+		prejoin_table->add_row(new w_spacer(), true);
+
+		w_button* join_w = new w_button("JOIN");
+#else
 		prejoin_table->dual_add_row(join_by_metaserver_w, m_dialog);
 		prejoin_table->add_row(new w_spacer(), true);
-		
-		w_toggle* hint_w = new w_toggle(false);
+
 		prejoin_table->dual_add(hint_w->label("Join by address"), m_dialog);
 		prejoin_table->dual_add(hint_w, m_dialog);
 
-		w_text_entry* hint_address_w = new w_text_entry(kJoinHintingAddressLength, "");
 		prejoin_table->dual_add(hint_address_w->label("Join address"), m_dialog);
 		prejoin_table->dual_add(hint_address_w, m_dialog);
 
 		prejoin_table->add_row(new w_spacer(), true);
 
 		w_button* join_w = new w_button("JOIN LOCAL GAME");
+#endif
 		prejoin_table->dual_add_row(join_w, m_dialog);
 		
 		prejoin_placer->add(prejoin_table, true);
@@ -2705,27 +2723,34 @@ public:
 		table_placer *network_table = new table_placer(2, get_theme_space(ITEM_WIDGET));
 		network_table->col_flags(1, placeable::kAlignLeft);
 
+		// On the web these three are dead code paths (no metaserver, no
+		// dedicated hubs, no router to configure); the widgets stay
+		// constructed because the shared dialog logic binds to them, but
+		// they are left out of the layout and their prefs are forced off
+		// (see preferences.cpp).
 		w_toggle *advertise_on_metaserver_w = new w_toggle (sAdvertiseGameOnMetaserver);
-		advertise_on_metaserver_w->set_enabled(!network_preferences->use_remote_hub);
-		network_table->dual_add(advertise_on_metaserver_w, m_dialog);
-		network_table->dual_add(advertise_on_metaserver_w->label("Advertise Game on Internet"), m_dialog);
-
 		w_toggle* use_remote_hub_w = new w_toggle(true);
-
-		network_table->dual_add(use_remote_hub_w, m_dialog);
-		network_table->dual_add(use_remote_hub_w->label("Use Dedicated Server"), m_dialog);
-
 #ifdef HAVE_MINIUPNPC
 		w_toggle *use_upnp_w = new w_toggle (true);
 		use_upnp_w->set_enabled(!network_preferences->use_remote_hub);
 #else
 		w_toggle *use_upnp_w = new w_toggle(false);
 #endif
+
+#ifndef __EMSCRIPTEN__
+		advertise_on_metaserver_w->set_enabled(!network_preferences->use_remote_hub);
+		network_table->dual_add(advertise_on_metaserver_w, m_dialog);
+		network_table->dual_add(advertise_on_metaserver_w->label("Advertise Game on Internet"), m_dialog);
+
+		network_table->dual_add(use_remote_hub_w, m_dialog);
+		network_table->dual_add(use_remote_hub_w->label("Use Dedicated Server"), m_dialog);
+
 		network_table->dual_add(use_upnp_w, m_dialog);
 		network_table->dual_add(use_upnp_w->label("Configure UPnP Router"), m_dialog);
 #ifndef HAVE_MINIUPNPC
 		use_upnp_w->set_enabled(false);
 #endif
+#endif // !__EMSCRIPTEN__
 
 		w_select_popup *latency_tolerance_w = new w_select_popup();
 		horizontal_placer *latency_placer = new horizontal_placer(get_theme_space(ITEM_WIDGET));
