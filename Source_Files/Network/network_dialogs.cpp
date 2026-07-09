@@ -89,8 +89,18 @@ Apr 10, 2003 (Woody Zenfell):
 #include "network_dialogs.h"
 
 #ifdef __EMSCRIPTEN__
-// wasm/config/net_relay.cpp: shareable join link for the current relay room
-// ("" if not connected), and clipboard access for the copy button.
+// wasm/config/net_relay.cpp: public-room discovery plus shareable join links.
+extern "C" int wasm_relay_publish_public(
+	const char* name,
+	const char* host,
+	const char* map,
+	int game_type,
+	int difficulty,
+	const char* scenario_id,
+	const char* scenario_name,
+	const char* scenario_version);
+extern "C" void wasm_relay_unlist_public();
+extern "C" int wasm_relay_public_rooms(char* buf, int maxlen);
 extern "C" void wasm_relay_share_url(char* buf, int maxlen);
 extern "C" void wasm_copy_to_clipboard(const char* text);
 #endif
@@ -266,6 +276,23 @@ bool network_gather(bool inResumingGame, bool& outUseRemoteHub)
 
 				if (advertiseOnMetaserver)
 				{
+#ifdef __EMSCRIPTEN__
+					const std::string game_name = std::string(myPlayerInfo.name) + "'s Game";
+					const std::string scenario_id = Scenario::instance()->GetID();
+					const std::string scenario_name = Scenario::instance()->GetName();
+					const std::string scenario_version = Scenario::instance()->GetVersion();
+					// Publishing is best-effort. If discovery is unavailable,
+					// the room remains usable through its code and share link.
+					wasm_relay_publish_public(
+						game_name.c_str(),
+						myPlayerInfo.name,
+						myGameInfo.level_name,
+						myGameInfo.net_game_type,
+						myGameInfo.difficulty_level,
+						scenario_id.c_str(),
+						scenario_name.c_str(),
+						scenario_version.c_str());
+#else
 					if (!gMetaserverClient) gMetaserverClient = new MetaserverClient();
 
 					try
@@ -311,9 +338,19 @@ bool network_gather(bool inResumingGame, bool& outUseRemoteHub)
 						gather_success = false;
 						alert_user(infoError, strNETWORK_ERRORS, netWarnCouldNotAdvertiseOnMetaserver, 0);
 					}
+#endif
 				}
 
-				gather_success = gather_success && (!outUseRemoteHub || NetGameJoin(&myPlayerInfo, sizeof(myPlayerInfo), nullptr)) && GatherDialog::Create(outUseRemoteHub)->GatherNetworkGameByRunning();
+				gather_success = gather_success && (!outUseRemoteHub || NetGameJoin(&myPlayerInfo, sizeof(myPlayerInfo), nullptr));
+				if (gather_success)
+					gather_success = GatherDialog::Create(outUseRemoteHub)->GatherNetworkGameByRunning();
+
+#ifdef __EMSCRIPTEN__
+				// A game can only be joined while its gather dialog is open.
+				// Remove it from discovery on both PLAY and CANCEL.
+				if (advertiseOnMetaserver)
+					wasm_relay_unlist_public();
+#endif
 
 			}
 			else {
@@ -324,9 +361,11 @@ bool network_gather(bool inResumingGame, bool& outUseRemoteHub)
 				NetDoneGathering();
 				if (advertiseOnMetaserver)
 				{
+#ifndef __EMSCRIPTEN__
 					metaserverAnnouncer->Start(myGameInfo.time_limit);
 					gMetaserverClient->setMode(1, NetSessionIdentifier());
 					gMetaserverClient->pump();
+#endif
 				}
 				successful = true;
 			}
@@ -2527,13 +2566,18 @@ extern struct color_table *build_8bit_system_color_table(void);
 class SdlJoinDialog : public JoinDialog
 {
 public:
-	SdlJoinDialog() : m_tabs(0)
+	SdlJoinDialog()
+		: m_tabs(0)
+#ifdef __EMSCRIPTEN__
+		, m_publicGames(nullptr)
+		, m_lastRelayLobbyPoll(0)
+#endif
 	{
 		SDL_Keymod m = SDL_GetModState();
 		if ((m & KMOD_ALT) || (m & KMOD_GUI)) skipToMetaserver = !skipToMetaserver;
 #ifdef __EMSCRIPTEN__
-		// No metaserver on the web; joining always goes through relay room
-		// codes typed into the address field.
+		// No legacy metaserver on the web; public selection and manually
+		// entered room codes both join through the relay.
 		skipToMetaserver = false;
 #endif
 
@@ -2565,13 +2609,23 @@ public:
 		vertical_placer *prejoin_placer = new vertical_placer;
 		table_placer *prejoin_table = new table_placer(2, get_theme_space(ITEM_WIDGET), true);
 		prejoin_table->col_flags(0, placeable::kAlignRight);
-		
+
+#ifdef __EMSCRIPTEN__
+		prejoin_placer->dual_add(new w_static_text("PUBLIC INTERNET GAMES"), m_dialog);
+		m_publicGames = new w_games_in_room(
+			std::bind(&SdlJoinDialog::publicGameSelected, this, std::placeholders::_1),
+			520,
+			2);
+		prejoin_placer->dual_add(m_publicGames, m_dialog);
+		prejoin_placer->add(new w_spacer(), true);
+#endif
+
 		prejoin_table->add_row(new w_spacer(), true);
 		
-		// The metaserver button and the join-by-address toggle stay
-		// constructed on the web build (the shared dialog logic reads them)
-		// but are left out of the layout: there is no metaserver or LAN
-		// discovery there, and the address field takes relay room codes.
+		// The legacy metaserver button and join-by-address toggle stay
+		// constructed on the web build because shared dialog logic reads
+		// them. Public games above and manually entered room codes both
+		// feed the existing address-join path.
 		w_button* join_by_metaserver_w = new w_button("FIND INTERNET GAME");
 		w_toggle* hint_w = new w_toggle(false);
 		w_text_entry* hint_address_w = new w_text_entry(kJoinHintingAddressLength, "");
@@ -2673,7 +2727,11 @@ public:
 
 	virtual void Run ()
 	{
+#ifdef __EMSCRIPTEN__
+		m_dialog.set_processing_function (std::bind(&SdlJoinDialog::relayLobbyIdle, this));
+#else
 		m_dialog.set_processing_function (std::bind(&SdlJoinDialog::gathererSearch, this));
+#endif
 		m_dialog.run();
 	}
 	
@@ -2695,6 +2753,124 @@ public:
 	}
 
 private:
+#ifdef __EMSCRIPTEN__
+	static int relayInteger(const std::string& text, int fallback = 0)
+	{
+		std::istringstream parser(text);
+		int value = fallback;
+		parser >> value;
+		return parser.fail() ? fallback : value;
+	}
+
+	void relayLobbyIdle()
+	{
+		if (join_result == kNetworkJoinFailedUnjoined)
+			pollPublicGames();
+		gathererSearch();
+	}
+
+	void pollPublicGames()
+	{
+		const uint64_t ticks = machine_tick_count();
+		if (m_lastRelayLobbyPoll && ticks < m_lastRelayLobbyPoll + 500)
+			return;
+		m_lastRelayLobbyPoll = ticks;
+
+		static char room_buffer[65536];
+		const int length = wasm_relay_public_rooms(room_buffer, sizeof(room_buffer));
+		if (length < 0 || length >= static_cast<int>(sizeof(room_buffer)))
+			return;
+
+		const std::string snapshot(room_buffer, length);
+		if (snapshot == m_publicRoomsSnapshot)
+			return;
+		m_publicRoomsSnapshot = snapshot;
+
+		std::vector<GameListMessage::GameListEntry> games;
+		std::map<uint32, std::string> room_codes;
+		bool selected_room_found = false;
+		std::istringstream rows(snapshot);
+		std::string row;
+		uint32 game_id = 1;
+		while (std::getline(rows, row))
+		{
+			if (row.empty())
+				continue;
+
+			std::vector<std::string> fields;
+			std::istringstream columns(row);
+			std::string field;
+			while (std::getline(columns, field, '\t'))
+				fields.push_back(field);
+			fields.resize(11);
+
+			const std::string& room_code = fields[0];
+			if (room_code.empty())
+				continue;
+
+			GameListMessage::GameListEntry game;
+			game.m_gameID = game_id;
+			memset(game.m_ipAddress, 0, sizeof(game.m_ipAddress));
+			game.m_port = 0;
+			game.m_verb = 0;
+			game.m_gameEnable = 1;
+			game.m_timeRemaining = static_cast<uint32>(-1);
+			game.m_hostPlayerID = 0;
+			game.m_len = 0;
+			game.m_ticks = ticks;
+			game.m_hostPlayerName = fields[4];
+
+			game.m_description.m_name = fields[3];
+			game.m_description.m_mapName = fields[5];
+			game.m_description.m_type = static_cast<uint16>(
+				std::max(0, std::min(65535, relayInteger(fields[6]))));
+			game.m_description.m_difficulty = static_cast<uint16>(
+				std::max(0, std::min(65535, relayInteger(fields[7]))));
+			game.m_description.m_scenarioID = fields[8];
+			game.m_description.m_scenarioName = fields[9];
+			game.m_description.m_scenarioVersion = fields[10];
+			game.m_description.m_timeLimit = -1;
+			game.m_description.m_numPlayers = static_cast<uint8>(
+				std::max(0, std::min(255, relayInteger(fields[1]))));
+			game.m_description.m_maxPlayers = static_cast<uint16>(
+				std::max(1, std::min(65535, relayInteger(fields[2], 8))));
+			game.m_description.m_closed =
+				game.m_description.m_numPlayers >= game.m_description.m_maxPlayers;
+			game.m_description.m_running = false;
+			game.target(room_code == m_selectedPublicRoom);
+			selected_room_found = selected_room_found || game.target();
+
+			room_codes[game_id] = room_code;
+			games.push_back(game);
+			++game_id;
+		}
+
+		if (!selected_room_found)
+			m_selectedPublicRoom.clear();
+		std::sort(games.begin(), games.end(), GameListMessage::GameListEntry::sort);
+		m_publicGameEntries.swap(games);
+		m_publicRoomCodes.swap(room_codes);
+		m_publicGames->set_collection(m_publicGameEntries);
+	}
+
+	void publicGameSelected(GameListMessage::GameListEntry game)
+	{
+		const auto room = m_publicRoomCodes.find(game.id());
+		if (room == m_publicRoomCodes.end() ||
+			game.m_description.m_closed ||
+			!game.compatible())
+			return;
+
+		m_selectedPublicRoom = room->second;
+		for (auto& listed_game : m_publicGameEntries)
+			listed_game.target(listed_game.id() == game.id());
+		m_publicGames->set_collection(m_publicGameEntries);
+
+		m_joinByAddressWidget->set_value(true);
+		m_joinAddressWidget->set_text(room->second);
+	}
+#endif
+
 	enum {
 		iJOIN_PREJOIN_TAB,
 		iJOIN_POSTJOIN_TAB,
@@ -2703,6 +2879,14 @@ private:
 
 	tab_placer *m_tabs;
 	w_chat_entry *chatentry_w;
+#ifdef __EMSCRIPTEN__
+	w_games_in_room *m_publicGames;
+	uint64_t m_lastRelayLobbyPoll;
+	std::string m_publicRoomsSnapshot;
+	std::string m_selectedPublicRoom;
+	std::vector<GameListMessage::GameListEntry> m_publicGameEntries;
+	std::map<uint32, std::string> m_publicRoomCodes;
+#endif
 	dialog m_dialog;
 };
 
@@ -2747,11 +2931,9 @@ public:
 		table_placer *network_table = new table_placer(2, get_theme_space(ITEM_WIDGET));
 		network_table->col_flags(1, placeable::kAlignLeft);
 
-		// On the web these three are dead code paths (no metaserver, no
-		// dedicated hubs, no router to configure); the widgets stay
-		// constructed because the shared dialog logic binds to them, but
-		// they are left out of the layout and their prefs are forced off
-		// (see preferences.cpp).
+		// On the web, the existing advertise preference publishes this
+		// relay room to the browser room directory. Dedicated hubs and
+		// router configuration remain desktop-only.
 		w_toggle *advertise_on_metaserver_w = new w_toggle (sAdvertiseGameOnMetaserver);
 		w_toggle* use_remote_hub_w = new w_toggle(true);
 #ifdef HAVE_MINIUPNPC
@@ -2761,7 +2943,10 @@ public:
 		w_toggle *use_upnp_w = new w_toggle(false);
 #endif
 
-#ifndef __EMSCRIPTEN__
+#ifdef __EMSCRIPTEN__
+		network_table->dual_add(advertise_on_metaserver_w, m_dialog);
+		network_table->dual_add(advertise_on_metaserver_w->label("Advertise Game on Internet"), m_dialog);
+#else
 		advertise_on_metaserver_w->set_enabled(!network_preferences->use_remote_hub);
 		network_table->dual_add(advertise_on_metaserver_w, m_dialog);
 		network_table->dual_add(advertise_on_metaserver_w->label("Advertise Game on Internet"), m_dialog);
@@ -2774,7 +2959,7 @@ public:
 #ifndef HAVE_MINIUPNPC
 		use_upnp_w->set_enabled(false);
 #endif
-#endif // !__EMSCRIPTEN__
+#endif // __EMSCRIPTEN__
 
 		w_select_popup *latency_tolerance_w = new w_select_popup();
 		horizontal_placer *latency_placer = new horizontal_placer(get_theme_space(ITEM_WIDGET));

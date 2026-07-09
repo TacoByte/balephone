@@ -116,6 +116,7 @@
     arguments: [GAME_DIR],
     // Multiplayer relay. Override with ?relay=wss://host:port if needed.
     relayUrl: params.get('relay') || undefined,
+    relayHttpUrl: params.get('relay_http') || undefined,
     print(text) { console.log(text); },
     printErr(text) { console.warn(text); },
   }).then(async (Module) => {

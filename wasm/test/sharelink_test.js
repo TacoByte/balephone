@@ -5,6 +5,7 @@
 // Usage: node sharelink_test.js [copy_fx,copy_fy]
 //   copy_fx,copy_fy: canvas-fraction position of the COPY button (default
 //   from the standard layout; pass explicitly after layout changes).
+const assert = require('assert');
 const { chromium } = require('playwright');
 const fs = require('fs');
 const http = require('http');
@@ -58,6 +59,7 @@ async function clickCanvas(page, fx, fy) {
   await pageA.waitForTimeout(3000);
 
   const room = await pageA.evaluate(() => window.__module && window.__module.__a1RoomCode || '');
+  assert.match(room, /^[A-HJ-NP-Z2-9]{4}$/);
   console.log(`room code: "${room}"`);
   await pageA.screenshot({ path: 'share_gather.png' });
 
@@ -67,7 +69,9 @@ async function clickCanvas(page, fx, fy) {
   const clipboard = await pageA.evaluate(() => navigator.clipboard.readText()).catch((e) => 'ERR ' + e.message);
   const expected = `http://127.0.0.1:${PORT}/?scenario=marathon2&join=${room}`;
   console.log(`copied: "${copied}"  clipboard: "${clipboard}"`);
-  console.log(copied === expected ? 'COPY OK' : `COPY MISMATCH (expected "${expected}")`);
+  assert.strictEqual(copied, expected);
+  assert.strictEqual(clipboard, expected);
+  console.log('COPY OK');
 
   // --- B: open the share link; the join dialog opens itself, prefilled ----
   const ctxB = await browser.newContext({ viewport: { width: 1440, height: 810 } });
@@ -77,8 +81,12 @@ async function clickCanvas(page, fx, fy) {
   await pageB.waitForTimeout(16000);
 
   await pageB.screenshot({ path: 'share_join_prefilled.png' });
-  await clickCanvas(pageB, 0.5, 0.333);   // JOIN
-  await pageB.waitForTimeout(4000);
+  await clickCanvas(pageB, 0.5, 0.613);   // JOIN
+  await pageB.waitForFunction(
+    (expectedRoom) => window.__module && window.__module.__a1RoomCode === expectedRoom,
+    room,
+    { timeout: 8000 },
+  );
   await pageB.screenshot({ path: 'share_join_waiting.png' });
 
   // A should now list the joiner in the gather dialog.

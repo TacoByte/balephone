@@ -13,6 +13,8 @@
  *      0x03 OPEN   [u32 stream][u8 dest][u16 port]
  *      0x04 DATA   [u32 stream][payload]
  *      0x05 CLOSE  [u32 stream]
+ *      0x06 PUBLISH [JSON metadata, creator only]
+ *      0x07 UNLIST  []
  *    relay -> client
  *      0x81 WELCOME   [u8 yourId][u8 roomLen][room utf8]
  *      0x82 DGRAM     [u8 src][u16 port][payload]
@@ -47,7 +49,7 @@ EM_JS(void, js_net_reset, (), {
     ws: null,
     status: 0,       // 0 idle/connecting, 2 ready, -1 failed
     myId: 0,
-    room: '',
+    room: String(),
     isCreator: false,
     dgrams: {},      // port -> [{src, port, data}]
     streams: {},     // id -> {open, chunks[], pos, peer, port}
@@ -57,7 +59,7 @@ EM_JS(void, js_net_reset, (), {
 });
 
 EM_JS(void, js_net_connect, (const char* roomPtr, int roomLen, int create), {
-  var room = roomLen ? UTF8ToString(roomPtr, roomLen) : '';
+  var room = roomLen ? UTF8ToString(roomPtr, roomLen) : String();
   js_net_reset();
   var st = globalThis.__a1net;
   st.isCreator = !!create;
@@ -151,12 +153,131 @@ EM_JS(int, js_net_status, (), {
   return st ? st.status : 0;
 });
 
+EM_JS(int, js_net_publish_public, (
+    const char* namePtr,
+    const char* hostPtr,
+    const char* mapPtr,
+    int gameType,
+    int difficulty,
+    const char* scenarioIdPtr,
+    const char* scenarioNamePtr,
+    const char* scenarioVersionPtr), {
+  var st = globalThis.__a1net;
+  if (!st || st.status !== 2 || !st.isCreator ||
+      !st.ws || st.ws.readyState !== WebSocket.OPEN) return 0;
+
+  var metadata = {
+    name: UTF8ToString(namePtr),
+    host: UTF8ToString(hostPtr),
+    map: UTF8ToString(mapPtr),
+    gameType: gameType,
+    difficulty: difficulty,
+    scenarioID: UTF8ToString(scenarioIdPtr),
+    scenarioName: UTF8ToString(scenarioNamePtr),
+    scenarioVersion: UTF8ToString(scenarioVersionPtr),
+  };
+  var json = new TextEncoder().encode(JSON.stringify(metadata));
+  var frame = new Uint8Array(1 + json.length);
+  frame[0] = 0x06;
+  frame.set(json, 1);
+  st.ws.send(frame);
+  return 1;
+});
+
+EM_JS(void, js_net_unlist_public, (), {
+  var st = globalThis.__a1net;
+  if (!st || st.status !== 2 || !st.isCreator ||
+      !st.ws || st.ws.readyState !== WebSocket.OPEN) return;
+  st.ws.send(new Uint8Array([0x07]));
+});
+
+// Start a throttled HTTP fetch and copy the most recent public-room snapshot
+// as tab-separated rows. Returns -1 until the first request finishes.
+EM_JS(int, js_net_public_rooms, (char* buf, int maxLen), {
+  var lobby = globalThis.__a1lobby;
+  if (!lobby) {
+    lobby = globalThis.__a1lobby = {
+      pending: false,
+      lastRequest: 0,
+      text: null,
+    };
+  }
+
+  var now = Date.now();
+  if (!lobby.pending && now - lobby.lastRequest >= 2000) {
+    lobby.pending = true;
+    lobby.lastRequest = now;
+
+    var relayUrl = Module['relayHttpUrl'] || Module['relayUrl'];
+    if (!relayUrl) {
+      var proto = (typeof location !== 'undefined' && location.protocol === 'https:') ? 'https://' : 'http://';
+      var host = (typeof location !== 'undefined') ? location.hostname : 'localhost';
+      relayUrl = proto + host + ':8787';
+    }
+
+    try {
+      var url = new URL(relayUrl, location.href);
+      if (url.protocol === 'ws:') url.protocol = 'http:';
+      if (url.protocol === 'wss:') url.protocol = 'https:';
+      url.pathname = '/v1/rooms';
+      url.search = String();
+      url.hash = String();
+
+      fetch(url.toString(), { cache: 'no-store' })
+        .then(function(response) {
+          if (!response.ok) throw new Error('room list HTTP ' + response.status);
+          return response.json();
+        })
+        .then(function(body) {
+          var rooms = Array.isArray(body.rooms) ? body.rooms : [];
+          var tab = String.fromCharCode(9);
+          var newline = String.fromCharCode(10);
+          function field(value) {
+            return String(value == null ? String() : value)
+              .split(tab).join(' ')
+              .split(newline).join(' ')
+              .split(String.fromCharCode(13)).join(' ');
+          }
+          lobby.text = rooms.map(function(room) {
+            return [
+              room.code,
+              room.members,
+              room.maxPlayers,
+              room.name,
+              room.host,
+              room.map,
+              room.gameType,
+              room.difficulty,
+              room.scenarioID,
+              room.scenarioName,
+              room.scenarioVersion,
+            ].map(field).join(tab);
+          }).join(newline);
+        })
+        .catch(function() {
+          if (lobby.text === null) lobby.text = String();
+        })
+        .finally(function() {
+          lobby.pending = false;
+        });
+    } catch (_) {
+      lobby.pending = false;
+      if (lobby.text === null) lobby.text = String();
+    }
+  }
+
+  if (lobby.text === null) return -1;
+  var length = lengthBytesUTF8(lobby.text);
+  if (maxLen > 0) stringToUTF8(lobby.text, buf, maxLen);
+  return length;
+});
+
 // Shareable join link for the current room: the page's own URL (scenario,
 // relay overrides etc. preserved) plus ?join=CODE. Empty if not connected.
 EM_JS(void, js_net_share_url, (char* buf, int maxLen), {
   var st = globalThis.__a1net;
   if (!st || st.status !== 2 || typeof location === 'undefined') {
-    stringToUTF8('', buf, maxLen);
+    stringToUTF8(String(), buf, maxLen);
     return;
   }
   var u = new URL(location.href);
@@ -517,6 +638,37 @@ extern void NetDDPPumpWasm();   // network_udp.cpp: drain datagrams to handler
 extern "C" void wasm_relay_share_url(char* buf, int maxlen)
 {
 	js_net_share_url(buf, maxlen);
+}
+
+extern "C" int wasm_relay_publish_public(
+	const char* name,
+	const char* host,
+	const char* map,
+	int game_type,
+	int difficulty,
+	const char* scenario_id,
+	const char* scenario_name,
+	const char* scenario_version)
+{
+	return js_net_publish_public(
+		name,
+		host,
+		map,
+		game_type,
+		difficulty,
+		scenario_id,
+		scenario_name,
+		scenario_version);
+}
+
+extern "C" void wasm_relay_unlist_public()
+{
+	js_net_unlist_public();
+}
+
+extern "C" int wasm_relay_public_rooms(char* buf, int maxlen)
+{
+	return js_net_public_rooms(buf, maxlen);
 }
 
 extern "C" void wasm_copy_to_clipboard(const char* text)

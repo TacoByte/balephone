@@ -13,6 +13,8 @@
  *     0x03 OPEN   [u32 stream][u8 dest][u16 port]
  *     0x04 DATA   [u32 stream][payload]
  *     0x05 CLOSE  [u32 stream]
+ *     0x06 PUBLISH [JSON metadata, creator only]
+ *     0x07 UNLIST  []
  *   relay -> client
  *     0x81 WELCOME   [u8 yourId][u8 roomLen][room utf8]
  *     0x82 DGRAM     [u8 src][u16 port][payload]
@@ -23,13 +25,14 @@
  *     0x87 ERROR     [u8 code]   1=no such room, 2=room full, 3=bad frame
  */
 
+const http = require('http');
 const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT || 8787;
 const MAX_MEMBERS = 8;
 const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I
 
-const rooms = new Map(); // code -> { members: Map<id, ws>, streams: Map<streamId, {a, b}> }
+const rooms = new Map(); // code -> { members, streams, public, metadata, updatedAt }
 
 function makeRoomCode() {
   let code;
@@ -50,7 +53,78 @@ function sendWelcome(ws, id, room) {
   ws.send(Buffer.concat([Buffer.from([0x81, id, roomBuf.length]), roomBuf]));
 }
 
-const wss = new WebSocketServer({ port: PORT });
+function cleanString(value, maxLength) {
+  return String(value || '')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+}
+
+function publicRoom(room) {
+  return {
+    code: room.code,
+    members: room.members.size,
+    maxPlayers: MAX_MEMBERS,
+    name: room.metadata.name,
+    host: room.metadata.host,
+    map: room.metadata.map,
+    gameType: room.metadata.gameType,
+    difficulty: room.metadata.difficulty,
+    scenarioID: room.metadata.scenarioID,
+    scenarioName: room.metadata.scenarioName,
+    scenarioVersion: room.metadata.scenarioVersion,
+    updatedAt: room.updatedAt,
+  };
+}
+
+function publishRoom(room, data) {
+  let metadata;
+  try {
+    metadata = JSON.parse(data.slice(1).toString('utf8'));
+  } catch (_) {
+    return;
+  }
+
+  room.metadata = {
+    name: cleanString(metadata.name, 64) || 'Untitled Game',
+    host: cleanString(metadata.host, 32),
+    map: cleanString(metadata.map, 64) || 'Unspecified Map',
+    gameType: Math.max(0, Math.min(65535, Number(metadata.gameType) || 0)),
+    difficulty: Math.max(0, Math.min(65535, Number(metadata.difficulty) || 0)),
+    scenarioID: cleanString(metadata.scenarioID, 64),
+    scenarioName: cleanString(metadata.scenarioName, 64),
+    scenarioVersion: cleanString(metadata.scenarioVersion, 32),
+  };
+  room.public = true;
+  room.updatedAt = Date.now();
+}
+
+const server = http.createServer((req, res) => {
+  const url = new URL(req.url, 'http://localhost');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cache-Control', 'no-store');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/v1/rooms') {
+    const listing = Array.from(rooms.values())
+      .filter((room) => room.public && room.metadata && room.members.has(1))
+      .map(publicRoom)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ rooms: listing }));
+    return;
+  }
+
+  res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify({ error: 'not found' }));
+});
+
+const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws) => {
   let room = null;   // { code, members, streams }
@@ -70,7 +144,14 @@ wss.on('connection', (ws) => {
       if (create) {
         code = code || makeRoomCode();
         if (rooms.has(code)) { sendError(ws, 2); return; }
-        rooms.set(code, { code, members: new Map(), streams: new Map() });
+        rooms.set(code, {
+          code,
+          members: new Map(),
+          streams: new Map(),
+          public: false,
+          metadata: null,
+          updatedAt: Date.now(),
+        });
       } else if (!rooms.has(code)) {
         sendError(ws, 1);
         return;
@@ -135,6 +216,17 @@ wss.on('connection', (ws) => {
         other.send(out);
         break;
       }
+      case 0x06: { // PUBLISH [JSON metadata], creator only
+        if (myId !== 1 || data.length > 4096) return;
+        publishRoom(room, data);
+        break;
+      }
+      case 0x07: // UNLIST, creator only
+        if (myId !== 1) return;
+        room.public = false;
+        room.metadata = null;
+        room.updatedAt = Date.now();
+        break;
     }
   });
 
@@ -142,6 +234,10 @@ wss.on('connection', (ws) => {
     if (!room) return;
     room.members.delete(myId);
     console.log(`[${room.code}] member ${myId} left (${room.members.size} in room)`);
+    if (myId === 1) {
+      room.public = false;
+      room.metadata = null;
+    }
 
     // Close this member's streams and notify everyone else.
     for (const [streamId, pair] of room.streams) {
@@ -159,4 +255,6 @@ wss.on('connection', (ws) => {
   ws.on('error', () => {});
 });
 
-console.log(`Aleph One relay listening on :${PORT}`);
+server.listen(PORT, () => {
+  console.log(`Aleph One relay listening on :${PORT}`);
+});

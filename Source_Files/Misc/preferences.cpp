@@ -5125,9 +5125,8 @@ void parse_network_preferences(InfoTree root, std::string version)
 	root.read_attr("allow_stats", network_preferences->allow_stats);
 
 #ifdef __EMSCRIPTEN__
-	// No metaserver or dedicated hubs on the web (their UI is hidden there);
-	// stored prefs must not resurrect these paths.
-	network_preferences->advertise_on_metaserver = false;
+	// The advertise preference is reused for the relay's public room
+	// directory. Legacy metaserver and dedicated-hub paths stay disabled.
 	network_preferences->use_remote_hub = false;
 	network_preferences->join_metaserver_by_default = false;
 	network_preferences->attempt_upnp = false;
