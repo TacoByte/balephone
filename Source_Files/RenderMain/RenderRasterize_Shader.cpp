@@ -62,16 +62,26 @@ public:
 		if (passes < 0)
 			passes = 5;
 
+		// One texel of offset: FBO textures are sampled in pixel units via
+		// sampler2DRect on desktop, but in normalized units on the web.
+#ifdef __EMSCRIPTEN__
+		const float texel_x = 1.0f / _width;
+		const float texel_y = 1.0f / _height;
+#else
+		const float texel_x = 1.0f;
+		const float texel_y = 1.0f;
+#endif
+
 		glBlendFunc(GL_SRC_ALPHA,GL_ONE);
 		for (int i = 0; i < passes; i++) {
 			_shader_blur->enable();
-			_shader_blur->setFloat(Shader::U_OffsetX, 1);
+			_shader_blur->setFloat(Shader::U_OffsetX, texel_x);
 			_shader_blur->setFloat(Shader::U_OffsetY, 0);
 			_shader_blur->setFloat(Shader::U_Pass, i + 1);
 			_swapper.filter(false);
 
 			_shader_blur->setFloat(Shader::U_OffsetX, 0);
-			_shader_blur->setFloat(Shader::U_OffsetY, 1);
+			_shader_blur->setFloat(Shader::U_OffsetY, texel_y);
 			_shader_blur->setFloat(Shader::U_Pass, i + 1);
 			_swapper.filter(false);
 

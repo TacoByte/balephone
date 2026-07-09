@@ -44,6 +44,15 @@ static inline void set_framebuffer_srgb(bool enable)
 #endif
 }
 
+// GLSL ES has no rectangle textures (sampler2DRect), so on the web the FBO
+// color buffer is a regular 2D texture sampled with normalized coordinates;
+// see the matching remapping in OGL_Shader.cpp's parseShader().
+#ifdef __EMSCRIPTEN__
+#define FBO_TEXTURE_TARGET GL_TEXTURE_2D
+#else
+#define FBO_TEXTURE_TARGET GL_TEXTURE_RECTANGLE_ARB
+#endif
+
 FBO::FBO(GLuint w, GLuint h, bool srgb) : _h(h), _w(w), _srgb(srgb) {
 	glGenFramebuffersEXT(1, &_fbo);
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, _fbo);
@@ -54,9 +63,17 @@ FBO::FBO(GLuint w, GLuint h, bool srgb) : _h(h), _w(w), _srgb(srgb) {
 	glFramebufferRenderbufferEXT(GL_FRAMEBUFFER_EXT, GL_DEPTH_ATTACHMENT_EXT, GL_RENDERBUFFER_EXT, _depthBuffer);
 	
 	glGenTextures(1, &texID);
-	glBindTexture(GL_TEXTURE_RECTANGLE_ARB, texID);
-	glTexImage2D(GL_TEXTURE_RECTANGLE_ARB, 0, srgb ? GL_SRGB : GL_RGB8, _w, _h, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_RECTANGLE_ARB, texID, 0);
+	glBindTexture(FBO_TEXTURE_TARGET, texID);
+	glTexImage2D(FBO_TEXTURE_TARGET, 0, srgb ? GL_SRGB : GL_RGB8, _w, _h, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+#ifdef __EMSCRIPTEN__
+	// NPOT 2D textures on WebGL1 must be non-mipmapped and clamped, or the
+	// texture is incomplete and samples as black.
+	glTexParameteri(FBO_TEXTURE_TARGET, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(FBO_TEXTURE_TARGET, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(FBO_TEXTURE_TARGET, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(FBO_TEXTURE_TARGET, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+#endif
+	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, FBO_TEXTURE_TARGET, texID, 0);
 	assert(glCheckFramebufferStatusEXT(GL_FRAMEBUFFER_EXT) == GL_FRAMEBUFFER_COMPLETE_EXT);
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
 }
@@ -91,10 +108,14 @@ void FBO::deactivate() {
 }
 
 void FBO::draw() {
-	glBindTexture(GL_TEXTURE_RECTANGLE_ARB, texID);
-	glEnable(GL_TEXTURE_RECTANGLE_ARB);
+	glBindTexture(FBO_TEXTURE_TARGET, texID);
+	glEnable(FBO_TEXTURE_TARGET);
+#ifdef __EMSCRIPTEN__
+	OGL_RenderTexturedRect(0, 0, _w, _h, 0, 1, 1, 0);
+#else
 	OGL_RenderTexturedRect(0, 0, _w, _h, 0, _h, _w, 0);
-	glDisable(GL_TEXTURE_RECTANGLE_ARB);
+#endif
+	glDisable(FBO_TEXTURE_TARGET);
 }
 
 void FBO::prepare_drawing_mode(bool blend) {
@@ -191,21 +212,28 @@ void FBOSwapper::blend_multisample(FBO& other) {
 	
 	// set up FBO passed in as texture #1
 	glActiveTextureARB(GL_TEXTURE1_ARB);
-	glBindTexture(GL_TEXTURE_RECTANGLE_ARB, other.texID);
-	glEnable(GL_TEXTURE_RECTANGLE_ARB);
+	glBindTexture(FBO_TEXTURE_TARGET, other.texID);
+	glEnable(FBO_TEXTURE_TARGET);
 	glActiveTextureARB(GL_TEXTURE0_ARB);
 	
 	glClientActiveTextureARB(GL_TEXTURE1_ARB);
 	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+#ifdef __EMSCRIPTEN__
+	// Normalized coords (2D texture), and GL_FLOAT: WebGL rejects GL_INT
+	// vertex attribute arrays, which kills the whole composite draw.
+	GLfloat multi_coordinates[8] = { 0, 1, 1, 1, 1, 0, 0, 0 };
+	glTexCoordPointer(2, GL_FLOAT, 0, multi_coordinates);
+#else
 	GLint multi_coordinates[8] = { 0, GLint(other._h), GLint(other._w), GLint(other._h), GLint(other._w), 0, 0, 0 };
 	glTexCoordPointer(2, GL_INT, 0, multi_coordinates);
+#endif
 	glClientActiveTextureARB(GL_TEXTURE0_ARB);
 	
 	draw(true);
 	
 	// tear down multitexture stuff
 	glActiveTextureARB(GL_TEXTURE1_ARB);
-	glDisable(GL_TEXTURE_RECTANGLE_ARB);
+	glDisable(FBO_TEXTURE_TARGET);
 	glActiveTextureARB(GL_TEXTURE0_ARB);
 	
 	glClientActiveTextureARB(GL_TEXTURE1_ARB);

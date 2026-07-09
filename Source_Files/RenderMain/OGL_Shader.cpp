@@ -191,6 +191,12 @@ GLhandleARB parseShader(const GLcharARB* str, GLenum shaderType) {
         if (DisableClipVertex()) {
             source.push_back("#define DISABLE_CLIP_VERTEX\n");
         }
+#ifdef __EMSCRIPTEN__
+	// GLSL ES has no rectangle samplers; FBO textures are plain 2D textures
+	// with normalized coordinates on the web (see OGL_FBO.cpp).
+	source.push_back("#define sampler2DRect sampler2D\n"
+	                 "#define texture2DRect texture2D\n");
+#endif
 	if (Wanting_sRGB)
 	{
 		source.push_back("#define GAMMA_CORRECTED_BLENDING\n");
@@ -376,6 +382,7 @@ void initDefaultPrograms() {
     
     defaultVertexPrograms["error"] = ""
     "varying vec4 vertexColor;\n"
+    "\n"
     "void main(void) {\n"
     "    gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;\n"
     "    vertexColor = vec4(1.0, 1.0, 0.0, 1.0);\n"
@@ -386,6 +393,7 @@ void initDefaultPrograms() {
     "   if ( n < 0.0 ) { nSign = -1.0; }; \n"
     "   return nSign * floor(abs(n)+0.5); \n"
     "} \n"
+    "\n"
     "void main (void) {\n"
     "    gl_FragColor = vec4(1.0, 1.0, 0.0, 1.0);\n"
     "    float checkerSize = 8.0;\n"
@@ -400,6 +408,7 @@ void initDefaultPrograms() {
     
 	defaultVertexPrograms["gamma"] = ""
 	"varying vec4 vertexColor;\n"
+	"\n"
 	"void main(void) {\n"
 	"	gl_TexCoord[0] = gl_MultiTexCoord0;\n"
 	"	gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;\n"
@@ -408,6 +417,7 @@ void initDefaultPrograms() {
 	defaultFragmentPrograms["gamma"] = ""
 	"uniform sampler2DRect texture0;\n"
 	"uniform float gammaAdjust;\n"
+	"\n"
 	"void main (void) {\n"
 	"	vec4 color0 = texture2DRect(texture0, gl_TexCoord[0].xy);\n"
 	"	gl_FragColor = vec4(pow(color0.r, gammaAdjust), pow(color0.g, gammaAdjust), pow(color0.b, gammaAdjust), 1.0);\n"
@@ -415,6 +425,7 @@ void initDefaultPrograms() {
 	
     defaultVertexPrograms["blur"] = ""
         "varying vec4 vertexColor;\n"
+        "\n"
         "void main(void) {\n"
         "	gl_TexCoord[0] = gl_MultiTexCoord0;\n"
         "	gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;\n"
@@ -440,6 +451,7 @@ void initDefaultPrograms() {
         "vec3 s2l(vec3 srgb) { return srgb * srgb; }\n"
         "vec3 l2s(vec3 linear) { return sqrt(linear); }\n"
         "#endif\n"
+        "\n"
         "void main (void) {\n"
         "	vec2 s = vec2(offsetx, offsety);\n"
         "	// Thanks to Renaud Bedard - http://theinstructionlimit.com/?p=43\n"
@@ -456,6 +468,7 @@ void initDefaultPrograms() {
     
     defaultVertexPrograms["bloom"] = ""
         "varying vec4 vertexColor;\n"
+        "\n"
         "void main(void) {\n"
         "	gl_TexCoord[0] = gl_MultiTexCoord0;\n"
         "	gl_TexCoord[1] = gl_MultiTexCoord1;\n"
@@ -474,6 +487,7 @@ void initDefaultPrograms() {
 		"#else\n"
 		"vec3 b2l(vec3 bloom) { return bloom; }\n"
         "#endif\n"
+        "\n"
         "void main (void) {\n"
         "	vec4 color0 = texture2DRect(texture0, gl_TexCoord[0].xy);\n"
         "	vec4 color1 = texture2DRect(texture1, gl_TexCoord[1].xy);\n"
