@@ -41,7 +41,7 @@ set(SOURCES
     ${SF}/CSeries/cspaths_sdl.cpp
     ${SF}/CSeries/csstrings.cpp
     ${SF}/CSeries/FilmProfile.cpp
-    ${SF}/CSeries/mytm_sdl.cpp
+    # mytm_sdl.cpp is replaced by config/mytm_wasm.cpp (no threads on the web)
 
     # Files
     ${SF}/Files/AStream.cpp
@@ -162,10 +162,10 @@ set(SOURCES
     ${SF}/ModelView/StudioLoader.cpp
     ${SF}/ModelView/WavefrontLoader.cpp
 
-    # Network: network.cpp pulls in network_dummy.cpp under DISABLE_NETWORKING.
-    # The other files listed here compile to nothing (self-guarded) but are
-    # kept so any stray references resolve. Unguarded asio/TCPMess-dependent
-    # files are excluded entirely.
+    # Network: full multiplayer stack, running over the WebSocket relay
+    # transport (config/net_relay.cpp) instead of asio sockets.
+    # NetworkInterface.cpp (asio impl) is excluded; net_relay.cpp implements
+    # the same API for the browser.
     ${SF}/Network/network.cpp
     ${SF}/Network/network_dialogs.cpp
     ${SF}/Network/network_dialog_widgets_sdl.cpp
@@ -175,10 +175,25 @@ set(SOURCES
     ${SF}/Network/network_star_spoke.cpp
     ${SF}/Network/network_udp.cpp
     ${SF}/Network/StarGameProtocol.cpp
+    ${SF}/Network/network_capabilities.cpp
+    ${SF}/Network/ConnectPool.cpp
+    ${SF}/Network/SSLP_limited.cpp
     ${SF}/Network/Pinger.cpp
+    ${SF}/Network/Update.cpp
     ${SF}/Network/HTTP.cpp
     ${SF}/Network/PortForward.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/config/network_stubs.cpp
+    ${SF}/Network/Metaserver/network_metaserver.cpp
+    ${SF}/Network/Metaserver/metaserver_dialogs.cpp
+    ${SF}/Network/Metaserver/metaserver_messages.cpp
+    ${SF}/Network/Metaserver/SdlMetaserverClientUi.cpp
+
+    # TCPMess (setup/chat/map-transfer message channel; transport-agnostic)
+    ${SF}/TCPMess/CommunicationsChannel.cpp
+    ${SF}/TCPMess/Message.cpp
+    ${SF}/TCPMess/MessageInflater.cpp
+
+    ${CMAKE_CURRENT_SOURCE_DIR}/config/net_relay.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/config/mytm_wasm.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/config/wasm_compat.c
     ${CMAKE_CURRENT_SOURCE_DIR}/config/glu_shim.c
     ${CMAKE_CURRENT_SOURCE_DIR}/config/gl4es_support.c
@@ -287,9 +302,7 @@ target_include_directories(alephone PRIVATE
 
 target_compile_definitions(alephone PRIVATE
     HAVE_CONFIG_H
-    DISABLE_NETWORKING
     AL_LIBTYPE_STATIC
-    ASIO_DISABLE_THREADS   # single-threaded build; asio headers only get compiled, never run
 )
 
 target_compile_options(alephone PRIVATE
@@ -343,3 +356,10 @@ target_link_libraries(alephone PRIVATE
 )
 
 set_target_properties(alephone PROPERTIES SUFFIX ".js")
+
+# Keep the shell page in the build dir up to date.
+add_custom_command(TARGET alephone POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/shell/index.html"
+        "$<TARGET_FILE_DIR:alephone>/index.html"
+)

@@ -4196,7 +4196,13 @@ static void default_network_preferences(network_preferences_data *preferences)
 	preferences->entry_point= 0;
 	preferences->game_type= _game_of_kill_monsters;
 	preferences->autogather= false;
+#ifdef __EMSCRIPTEN__
+	// The browser build joins via relay room codes typed into the address
+	// field; there is no LAN discovery or metaserver.
+	preferences->join_by_address= true;
+#else
 	preferences->join_by_address= false;
+#endif
 	obj_clear(preferences->join_address);
 	preferences->game_port= DEFAULT_GAME_PORT;
 	preferences->game_protocol= _network_game_protocol_default;
@@ -4208,7 +4214,13 @@ static void default_network_preferences(network_preferences_data *preferences)
 	preferences->cheat_flags = _allow_tunnel_vision | _allow_crosshair | _allow_behindview | _allow_overlay_map;
 	preferences->advertise_on_metaserver = false;
 	preferences->attempt_upnp = false;
+#ifdef __EMSCRIPTEN__
+	// No metaserver or dedicated hubs on the web; the gatherer's browser is
+	// the hub, and games are shared via relay room codes.
+	preferences->use_remote_hub = false;
+#else
 	preferences->use_remote_hub = true;
+#endif
 	preferences->check_for_updates = true;
 	preferences->verify_https = false;
 	strncpy(preferences->metaserver_login, "guest", preferences->kMetaserverLoginLength);

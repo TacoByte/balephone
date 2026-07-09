@@ -26,6 +26,12 @@
   }
   #bar > div { height: 100%; width: 0%; background: #4be08a; }
   #boot.hidden, #bar.hidden, #status.hidden { display: none; }
+  #roomcode {
+    position: fixed; top: 12px; right: 16px; z-index: 10;
+    padding: 6px 12px; display: none;
+    background: rgba(10, 26, 18, 0.9); border: 1px solid #2c4a3c;
+    font-size: 14px; letter-spacing: 0.1em; color: #4be08a;
+  }
 </style>
 </head>
 <body>
@@ -36,6 +42,7 @@
   </div>
   <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
 </div>
+<div id="roomcode"></div>
 <script src="alephone.js"></script>
 <script>
   const statusEl = document.getElementById('status');
@@ -63,6 +70,19 @@
   AlephOne({
     canvas: document.getElementById('canvas'),
     arguments: ['/data/game'],
+    // Multiplayer relay. Override with ?relay=wss://host:port if needed.
+    relayUrl: new URLSearchParams(location.search).get('relay') || undefined,
+    // Called by the engine's relay transport once a room is created/joined.
+    // Member 1 is the gatherer; show their room code so they can share it.
+    onRoomCode(code, memberId) {
+      const el = document.getElementById('roomcode');
+      if (memberId === 1) {
+        el.textContent = 'ROOM CODE: ' + code;
+        el.style.display = 'block';
+      } else {
+        el.style.display = 'none';
+      }
+    },
     setStatus(text) {
       if (!text) return;
       statusEl.textContent = text.toUpperCase();

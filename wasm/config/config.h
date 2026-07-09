@@ -11,8 +11,8 @@
 #define HAVE_ZLIB 1
 #define HAVE_ZLIB_H 1
 
-/* Disabled subsystems */
-#define DISABLE_NETWORKING 1
+/* Networking is enabled, running over a WebSocket relay transport
+   (wasm/config/net_relay.cpp) instead of raw sockets. */
 
 /* OpenGL renderer via gl4es (desktop GL 2.x -> WebGL) */
 #define HAVE_OPENGL 1
