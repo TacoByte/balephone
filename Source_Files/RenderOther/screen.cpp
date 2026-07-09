@@ -33,9 +33,21 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(__EMSCRIPTEN__) && defined(A1_WASM_PERF_TESTING)
+#ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
+#include <emscripten/eventloop.h>
+#include <emscripten/html5.h>
 
+EM_JS(int, wasm_browser_viewport_width, (), {
+	return Math.floor(window.innerWidth || document.documentElement.clientWidth || 0);
+});
+
+EM_JS(int, wasm_browser_viewport_height, (), {
+	return Math.floor(window.innerHeight || document.documentElement.clientHeight || 0);
+});
+#endif
+
+#if defined(__EMSCRIPTEN__) && defined(A1_WASM_PERF_TESTING)
 static unsigned int wasm_perf_frame_counter = 0;
 
 extern "C" EMSCRIPTEN_KEEPALIVE unsigned int wasm_perf_frame_count()
@@ -151,6 +163,9 @@ Screen Screen::m_instance;
 static bool need_mode_change(int window_width, int window_height, int log_width, int log_height, int depth, bool nogl);
 static void change_screen_mode(int width, int height, int depth, bool nogl, bool force_menu, bool force_resize_hud = false);
 static bool get_auto_resolution_size(short *w, short *h, struct screen_mode_data *mode);
+#ifdef __EMSCRIPTEN__
+static void register_browser_resize_callback();
+#endif
 static void build_sdl_color_table(const color_table *color_table, SDL_Color *colors);
 static void reallocate_world_pixels(int width, int height);
 static void reallocate_map_pixels(int width, int height);
@@ -313,6 +328,9 @@ void Screen::Initialize(screen_mode_data* mode)
 	change_screen_mode(&screen_mode, true);
 	screen_initialized = true;
 
+#ifdef __EMSCRIPTEN__
+	register_browser_resize_callback();
+#endif
 }
 
 int Screen::height()
@@ -1163,6 +1181,24 @@ bool get_auto_resolution_size(short *w, short *h, struct screen_mode_data *mode)
 	{
 		short width = Screen::instance()->ModeWidth(0);
 		short height = Screen::instance()->ModeHeight(0);
+#ifdef __EMSCRIPTEN__
+		int viewport_width = wasm_browser_viewport_width();
+		int viewport_height = wasm_browser_viewport_height();
+		if (viewport_width > 0 && viewport_height > 0)
+		{
+			// Match the browser viewport's aspect ratio so the CSS canvas can
+			// occupy the whole page without stretching. Small viewports are
+			// rendered at a larger backing resolution and scaled down.
+			double scale = std::max(1.0,
+				std::max(640.0 / viewport_width, 480.0 / viewport_height));
+			width = static_cast<short>(std::min(
+				static_cast<long>(32767),
+				lround(viewport_width * scale)));
+			height = static_cast<short>(std::min(
+				static_cast<long>(32767),
+				lround(viewport_height * scale)));
+		}
+#else
 		// in windowed mode, use a window one step down from fullscreen size
 		if (!screen_mode.fullscreen &&
 			((width > 640) || (height > 480)) &&
@@ -1171,6 +1207,7 @@ bool get_auto_resolution_size(short *w, short *h, struct screen_mode_data *mode)
 			width = Screen::instance()->ModeWidth(1);
 			height = Screen::instance()->ModeHeight(1);
 		}
+#endif
 		if (w)
 			*w = width;
 		if (h)
@@ -1184,6 +1221,61 @@ bool get_auto_resolution_size(short *w, short *h, struct screen_mode_data *mode)
 	}
 	return false;
 }
+
+#ifdef __EMSCRIPTEN__
+static int browser_resize_timeout_id = 0;
+static bool browser_resize_pending = false;
+
+static void apply_browser_resize(void *)
+{
+	browser_resize_timeout_id = 0;
+	browser_resize_pending = true;
+}
+
+void process_pending_browser_resize()
+{
+	if (!browser_resize_pending)
+		return;
+	browser_resize_pending = false;
+
+	if (!in_game || !screen_mode.auto_resolution)
+		return;
+
+	short width = 0;
+	short height = 0;
+	if (!get_auto_resolution_size(&width, &height, &screen_mode))
+		return;
+	if (main_surface && main_surface->w == width && main_surface->h == height)
+		return;
+
+	change_screen_mode(width, height, screen_mode.bit_depth, false, false, true);
+	clear_screen();
+	fps_counter.reset();
+	render_screen(0);
+}
+
+static EM_BOOL browser_resize_callback(int, const EmscriptenUiEvent *, void *)
+{
+	if (!in_game || !screen_mode.auto_resolution)
+		return EM_FALSE;
+
+	if (browser_resize_timeout_id)
+		emscripten_clear_timeout(browser_resize_timeout_id);
+	browser_resize_timeout_id = emscripten_set_timeout(apply_browser_resize, 150, nullptr);
+	return EM_FALSE;
+}
+
+static void register_browser_resize_callback()
+{
+	static bool registered = false;
+	if (!registered &&
+		emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, false,
+			browser_resize_callback) == EMSCRIPTEN_RESULT_SUCCESS)
+	{
+		registered = true;
+	}
+}
+#endif
 	
 void change_screen_mode(struct screen_mode_data *mode, bool redraw, bool resize_hud)
 {

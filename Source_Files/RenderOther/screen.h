@@ -212,6 +212,9 @@ screen_mode_data *get_screen_mode(void);
 //void initialize_screen(struct screen_mode_data *mode, bool ShowFreqDialog);
 void change_screen_mode(struct screen_mode_data *mode, bool redraw, bool resize_hud = false);
 void change_screen_mode(short screentype);
+#ifdef __EMSCRIPTEN__
+void process_pending_browser_resize();
+#endif
 
 void toggle_fullscreen(bool fs);
 void toggle_fullscreen();

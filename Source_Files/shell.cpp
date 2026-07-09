@@ -737,6 +737,9 @@ void main_event_loop(void)
 	short game_state;
 
 	while ((game_state = get_game_state()) != _quit_game) {
+#ifdef __EMSCRIPTEN__
+		process_pending_browser_resize();
+#endif
 		uint64_t cur_time = machine_tick_count();
 		bool yield_time = false;
 		bool poll_event = false;
