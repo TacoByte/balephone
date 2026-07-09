@@ -2415,15 +2415,26 @@ public:
 	{
 		vertical_placer *placer = new vertical_placer;
 #ifdef __EMSCRIPTEN__
-		// The relay room is open by now (NetGather ran); fold its code into
-		// the title so the gatherer can share it with joiners. No extra
-		// rows: the dialog is already near full height with the chat panel.
-		char dialog_title[64] = "GATHER NETWORK GAME";
+		// The relay room is open by now (NetGather ran); show its code next
+		// to the title so the gatherer can share it with joiners. It shares
+		// the title row (the dialog is already near full height with the
+		// chat panel) but uses the item theme class, so it stands out in a
+		// different color.
 		char roomcode[16];
 		wasm_relay_room_code(roomcode, sizeof(roomcode));
 		if (roomcode[0])
-			snprintf(dialog_title, sizeof(dialog_title), "GATHER NETWORK GAME - CODE %s", roomcode);
-		placer->dual_add(new w_title(dialog_title), m_dialog);
+		{
+			char roomcode_text[32];
+			snprintf(roomcode_text, sizeof(roomcode_text), "CODE: %s", roomcode);
+			horizontal_placer *title_row = new horizontal_placer(24);
+			title_row->dual_add(new w_title("GATHER NETWORK GAME"), m_dialog);
+			title_row->dual_add(new w_static_text(roomcode_text, ITEM_WIDGET), m_dialog);
+			placer->add(title_row, true);
+		}
+		else
+		{
+			placer->dual_add(new w_title("GATHER NETWORK GAME"), m_dialog);
+		}
 #else
 		placer->dual_add(new w_title("GATHER NETWORK GAME"), m_dialog);
 #endif
