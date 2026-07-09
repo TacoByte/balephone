@@ -161,6 +161,35 @@ function gameUrl(extra = '') {
         runtimeErrors.push(error.message);
       }
     });
+
+    // Browser room codes must not leak from an earlier session into the
+    // ordinary join dialog.
+    await pageB.goto(gameUrl(), { waitUntil: 'domcontentloaded' });
+    await pageB.waitForTimeout(14000);
+    const seededStaleCode = await pageB.evaluate(async () => {
+      const M = window.__module;
+      const prefsPath = '/home/web_user/.alephone/Marathon 2 Preferences';
+      let text = M.FS.readFile(prefsPath, { encoding: 'utf8' });
+      const updated = text.replace(/join_address="[^"]*"/, 'join_address="ABCD"');
+      if (updated === text) return false;
+      M.FS.writeFile(prefsPath, updated);
+      await new Promise((resolve, reject) => {
+        M.FS.syncfs(false, (error) => error ? reject(error) : resolve());
+      });
+      return true;
+    });
+    assert(seededStaleCode, 'test could not seed a stale room code');
+    await pageB.reload({ waitUntil: 'domcontentloaded' });
+    await pageB.waitForTimeout(14000);
+    await clickCanvas(pageB, 0.209, 0.662); // Join Network Game
+    await pageB.screenshot({ path: 'public_join_empty.png' });
+    await clickCanvas(pageB, 0.5, 0.613, 500); // disabled JOIN
+    assert.strictEqual(
+      await pageB.evaluate(() => window.__module && window.__module.__a1RoomCode || ''),
+      '',
+      'empty join dialog unexpectedly attempted a relay connection',
+    );
+
     await pageB.goto(gameUrl('ZZZZ'), { waitUntil: 'domcontentloaded' });
     await pageB.waitForTimeout(16000);
     await pageB.screenshot({ path: 'public_join_list.png' });

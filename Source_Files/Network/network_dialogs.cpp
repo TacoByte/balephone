@@ -2571,6 +2571,7 @@ public:
 #ifdef __EMSCRIPTEN__
 		, m_publicGames(nullptr)
 		, m_lastRelayLobbyPoll(0)
+		, m_joinButtonEnabled(false)
 #endif
 	{
 		SDL_Keymod m = SDL_GetModState();
@@ -2707,6 +2708,9 @@ public:
 
 		m_cancelWidget = new ButtonWidget (cancel_w);
 		m_joinWidget = new ButtonWidget (join_w);
+#ifdef __EMSCRIPTEN__
+		m_joinWidget->deactivate();
+#endif
 	
 		m_joinMetaserverWidget = new ButtonWidget (join_by_metaserver_w);
 		m_joinAddressWidget = new EditTextWidget (hint_address_w);
@@ -2762,10 +2766,35 @@ private:
 		return parser.fail() ? fallback : value;
 	}
 
+	static bool validRelayRoomCode(const std::string& code)
+	{
+		static const std::string alphabet =
+			"ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghjklmnpqrstuvwxyz";
+		return code.size() == 4 &&
+			std::all_of(code.begin(), code.end(), [](char c) {
+				return alphabet.find(c) != std::string::npos;
+			});
+	}
+
+	void updateJoinButton()
+	{
+		const bool enabled = validRelayRoomCode(m_joinAddressWidget->get_text());
+		if (enabled == m_joinButtonEnabled)
+			return;
+		m_joinButtonEnabled = enabled;
+		if (enabled)
+			m_joinWidget->activate();
+		else
+			m_joinWidget->deactivate();
+	}
+
 	void relayLobbyIdle()
 	{
 		if (join_result == kNetworkJoinFailedUnjoined)
+		{
+			updateJoinButton();
 			pollPublicGames();
+		}
 		gathererSearch();
 	}
 
@@ -2845,12 +2874,19 @@ private:
 			++game_id;
 		}
 
+		const std::string previous_selection = m_selectedPublicRoom;
 		if (!selected_room_found)
+		{
 			m_selectedPublicRoom.clear();
+			if (!previous_selection.empty() &&
+				m_joinAddressWidget->get_text() == previous_selection)
+				m_joinAddressWidget->set_text("");
+		}
 		std::sort(games.begin(), games.end(), GameListMessage::GameListEntry::sort);
 		m_publicGameEntries.swap(games);
 		m_publicRoomCodes.swap(room_codes);
 		m_publicGames->set_collection(m_publicGameEntries);
+		updateJoinButton();
 	}
 
 	void publicGameSelected(GameListMessage::GameListEntry game)
@@ -2868,6 +2904,7 @@ private:
 
 		m_joinByAddressWidget->set_value(true);
 		m_joinAddressWidget->set_text(room->second);
+		updateJoinButton();
 	}
 #endif
 
@@ -2882,6 +2919,7 @@ private:
 #ifdef __EMSCRIPTEN__
 	w_games_in_room *m_publicGames;
 	uint64_t m_lastRelayLobbyPoll;
+	bool m_joinButtonEnabled;
 	std::string m_publicRoomsSnapshot;
 	std::string m_selectedPublicRoom;
 	std::vector<GameListMessage::GameListEntry> m_publicGameEntries;

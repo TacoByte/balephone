@@ -3618,17 +3618,21 @@ void read_preferences ()
 
 #ifdef __EMSCRIPTEN__
 	// A shared game link (?join=CODE in the page URL) prefills the join
-	// dialog's room code field, overriding whatever was joined last.
+	// dialog's room code field. Relay room codes are ephemeral, so do not
+	// carry a previously joined room into a new browser session.
 	{
 		char join_code[32] = "";
 		EM_ASM({
-			var code = new URLSearchParams(location.search).get('join') || '';
+			var code = new URLSearchParams(location.search).get('join') || String();
 			stringToUTF8(code.toUpperCase(), $0, $1);
 		}, join_code, (int)sizeof(join_code));
+		network_preferences->join_address[0] = '\0';
 		if (join_code[0])
 		{
 			strncpy(network_preferences->join_address, join_code,
 			        sizeof(network_preferences->join_address) - 1);
+			network_preferences->join_address[
+				sizeof(network_preferences->join_address) - 1] = '\0';
 			network_preferences->join_by_address = true;
 		}
 	}
