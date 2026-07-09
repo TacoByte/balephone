@@ -44,6 +44,22 @@ static std::atomic_bool sKeepListening = false;
 // Keep track of the receiving thread
 static SDL_Thread* sReceivingThread = NULL;
 
+#ifdef __EMSCRIPTEN__
+// Single-threaded browser build: no receive thread. Datagrams queue up on
+// the JS side and are drained here, called from the main-loop network pump
+// (wasm_net_idle in wasm/config/net_relay.cpp).
+void NetDDPPumpWasm()
+{
+	if (!sSocket || !sPacketHandler)
+		return;
+
+	static UDPpacket packet;
+	while (sSocket->receive(packet) > 0)
+		sPacketHandler(packet);
+}
+#endif
+
+#ifndef __EMSCRIPTEN__
 // ZZZ: the socket listening thread loops in this function.  It calls the registered
 // packet handler when it gets something.
 static int
@@ -77,6 +93,7 @@ receive_thread_function(void*) {
 
 	return 0;
 }
+#endif // !__EMSCRIPTEN__
 
 /*
  *  Open socket
@@ -89,6 +106,9 @@ bool NetDDPOpenSocket(uint16_t ioPortNumber, PacketHandlerProcPtr packetHandler)
 	sSocket = NetGetNetworkInterface()->udp_open_socket(ioPortNumber);
 	if (!sSocket) return false;
 
+#ifdef __EMSCRIPTEN__
+	// No receive thread; NetDDPPumpWasm() polls from the main loop.
+#else
 	// Set up receiver
 	sKeepListening = true;
 	sPacketHandler = packetHandler;
@@ -98,6 +118,7 @@ bool NetDDPOpenSocket(uint16_t ioPortNumber, PacketHandlerProcPtr packetHandler)
 	bool theResult = BoostThreadPriority(sReceivingThread);
 	if (theResult == false)
 		fdprintf("warning: BoostThreadPriority() failed; network performance may suffer\n");
+#endif
 	return true;
 }
 

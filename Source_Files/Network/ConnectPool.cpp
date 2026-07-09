@@ -51,12 +51,18 @@ NonblockingConnect::~NonblockingConnect()
 void NonblockingConnect::connect()
 {
 	m_status = Connecting;
+#ifdef __EMSCRIPTEN__
+	// Single-threaded: the WebSocket-relay transport doesn't block on
+	// connect (resolve may ASYNCIFY-sleep, which is fine here), so just run
+	// the connect inline.
+	Thread();
+#else
 	m_thread = SDL_CreateThread(connect_thread, "NonblockingConnect_thread", this);
 	if (!m_thread)
 	{
 		m_status = ConnectFailed;
 	}
-
+#endif
 }
 
 int NonblockingConnect::connect_thread(void *p)
@@ -70,7 +76,11 @@ int NonblockingConnect::Thread()
 	if (!m_ipSpecified)
 	{
 		auto address = NetGetNetworkInterface()->resolve_address(m_address.c_str(), m_port);
-		if (!address.has_value()) return 1;
+		if (!address.has_value())
+		{
+			m_status = ResolutionFailed;
+			return 1;
+		}
 		m_ip = address.value();
 	}
 

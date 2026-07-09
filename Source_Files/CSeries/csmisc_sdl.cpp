@@ -32,6 +32,26 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+
+// wasm/config/net_relay.cpp: drains relay messages and runs hub/spoke ticks.
+// Every ASYNCIFY sleep is a yield point where network work must happen,
+// since the browser build has no network threads.
+extern "C" void wasm_net_idle(void);
+
+// Sleep in slices so periodic network tasks (30 Hz hub/spoke ticks) keep
+// running during long waits.
+static void emscripten_sleep_pumped(uint64_t ms)
+{
+	const uint64_t deadline = machine_tick_count() + ms;
+	do {
+		wasm_net_idle();
+		const uint64_t now = machine_tick_count();
+		if (now >= deadline)
+			break;
+		const uint64_t remaining = deadline - now;
+		emscripten_sleep(remaining > 10 ? 10 : (uint32_t)remaining);
+	} while (true);
+}
 #endif
 
 static const auto epoch = std::chrono::steady_clock::now();
@@ -60,7 +80,7 @@ void sleep_for_machine_ticks(uint32 ticks)
 #ifdef __EMSCRIPTEN__
 	// Yield to the browser event loop (requires ASYNCIFY); sleep_for would
 	// busy-wait and hang the tab.
-	emscripten_sleep(ticks * TIME_SKEW);
+	emscripten_sleep_pumped(ticks * TIME_SKEW);
 #else
 	std::this_thread::sleep_for(std::chrono::milliseconds(ticks*TIME_SKEW));
 #endif
@@ -75,7 +95,7 @@ void sleep_until_machine_tick_count(uint64_t ticks)
 #ifdef __EMSCRIPTEN__
 	const auto now = machine_tick_count();
 	if (ticks > now)
-		emscripten_sleep((ticks - now) * TIME_SKEW);
+		emscripten_sleep_pumped((ticks - now) * TIME_SKEW);
 #else
 	std::this_thread::sleep_until(std::chrono::steady_clock::time_point(std::chrono::milliseconds(ticks*TIME_SKEW)));
 #endif
@@ -89,6 +109,7 @@ void yield(void)
 #ifdef __EMSCRIPTEN__
 	// Give the browser a chance to run its event loop; std::this_thread::yield
 	// is a no-op on the web and would leave dialog loops spinning forever.
+	wasm_net_idle();
 	emscripten_sleep(1);
 #else
 	std::this_thread::yield();

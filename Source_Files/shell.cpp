@@ -119,6 +119,8 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+// wasm/config/net_relay.cpp: main-loop network pump (no network threads on web)
+extern "C" void wasm_net_idle(void);
 #endif
 
 // Data directories
@@ -823,7 +825,10 @@ void main_event_loop(void)
 #ifdef __EMSCRIPTEN__
 		// Guarantee the browser event loop runs at least once per iteration,
 		// even on paths that never sleep (e.g. uncapped fps during gameplay).
+		// Then run pending network work (relay messages, hub/spoke ticks);
+		// the browser build has no network threads.
 		emscripten_sleep(0);
+		wasm_net_idle();
 #endif
 	}
 }

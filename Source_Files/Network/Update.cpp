@@ -52,6 +52,12 @@ int Update::update_thread(void *p)
 
 void Update::StartUpdateCheck()
 {
+#ifdef __EMSCRIPTEN__
+	// No threads and no HTTP client in the browser; the web page itself is
+	// the "latest version".
+	m_status = NoUpdateAvailable;
+	return;
+#else
 	if (m_status == CheckingForUpdate) return;
 	if (m_thread)
 	{
@@ -69,6 +75,7 @@ void Update::StartUpdateCheck()
 	{
 		m_status = UpdateCheckFailed;
 	}
+#endif
 }
 
 int Update::Thread()
