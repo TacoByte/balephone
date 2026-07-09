@@ -132,6 +132,12 @@ public:
 	GLuint TxtrID;
 	GLuint NearFilter = GL_LINEAR;
 	uint32 DispList;
+#ifdef __EMSCRIPTEN__
+	// Per-glyph atlas UVs; the web build draws quads directly instead of
+	// nested display lists (broken under gl4es) and RGBA instead of
+	// GL_LUMINANCE_ALPHA (missing/wrong glyphs for some letters).
+	float m_glyphUv[256][4];
+#endif
 	static std::set<FontSpecifier*> *m_font_registry;
 #endif
 };

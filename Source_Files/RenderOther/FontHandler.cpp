@@ -173,7 +173,9 @@ void FontSpecifier::OGL_Reset(bool IsStarting)
 	if (!IsStarting && OGL_Texture)
 	{
 		glDeleteTextures(1,&TxtrID);
+#ifndef __EMSCRIPTEN__
 		glDeleteLists(DispList,256);
+#endif
 		OGL_Deregister(this);
 	}
 
@@ -253,15 +255,34 @@ void FontSpecifier::OGL_Reset(bool IsStarting)
 		}
 	}
  	
- 	// Non-MacOS-specific: allocate the texture buffer
- 	// Its format is LA 88, where L is the luminosity and A is the alpha channel
- 	// The font value will go into A.
- 	OGL_Texture = new uint8[2*GetTxtrSize()];
-	
 	// Copy the SDL surface into the OpenGL texture
 	uint8 *PixBase = (uint8 *)FontSurface->pixels;
 	int Stride = FontSurface->pitch;
- 	
+#ifdef __EMSCRIPTEN__
+	// RGBA: gl4es/WebGL mishandles GL_LUMINANCE_ALPHA font atlases.
+	OGL_Texture = new uint8[4*GetTxtrSize()];
+	for (int k = 0; k < TxtrHeight; k++)
+	{
+		uint8 *SrcRow = PixBase + k * Stride;
+		uint8 *DstPxl = OGL_Texture + 4 * k * TxtrWidth;
+		for (int m = 0; m < TxtrWidth; m++)
+		{
+			uint8 r, g, b;
+			uint32 pixel = 0;
+			memcpy(&pixel, SrcRow + m * 4, 4);
+			SDL_GetRGB(pixel, FontSurface->format, &r, &g, &b);
+			const uint8 a = std::max(r, std::max(g, b));
+			DstPxl[0] = 0xff;
+			DstPxl[1] = 0xff;
+			DstPxl[2] = 0xff;
+			DstPxl[3] = a;
+			DstPxl += 4;
+		}
+	}
+#else
+	// Its format is LA 88, where L is the luminosity and A is the alpha channel
+	// The font value will go into A.
+	OGL_Texture = new uint8[2*GetTxtrSize()];
  	for (int k=0; k<TxtrHeight; k++)
  	{
  		uint8 *SrcPxl = PixBase + k*Stride + 1;	// Use one of the middle channels (red or green or blue)
@@ -273,6 +294,7 @@ void FontSpecifier::OGL_Reset(bool IsStarting)
  			SrcPxl += 4;
   		}
  	}
+#endif
 	
 	// Clean up
 	SDL_FreeSurface(FontSurface);
@@ -288,16 +310,43 @@ void FontSpecifier::OGL_Reset(bool IsStarting)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+#ifdef __EMSCRIPTEN__
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, TxtrWidth, TxtrHeight,
+		0, GL_RGBA, GL_UNSIGNED_BYTE, OGL_Texture);
+#else
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, TxtrWidth, TxtrHeight,
 		0, GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE, OGL_Texture);
+#endif
  	
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 	
- 	// Allocate and create display lists of rendering commands
- 	DispList = glGenLists(256);
  	GLfloat TWidNorm = GLfloat(1)/TxtrWidth;
  	GLfloat THtNorm = GLfloat(1)/TxtrHeight;
+#ifdef __EMSCRIPTEN__
+	// Record UVs and skip nested display lists (unreliable under gl4es).
+	DispList = 0;
+	for (int k = 0; k <= LastLine; k++)
+	{
+		unsigned char Which = CharStarts[k];
+		GLfloat Top = k * (THtNorm * GlyphHeight);
+		GLfloat Bottom = (k + 1) * (THtNorm * GlyphHeight);
+		int Pos = 0;
+		for (int m = 0; m < CharCounts[k]; m++)
+		{
+			short Width = widths_p[Which];
+			int NewPos = Pos + Width;
+			m_glyphUv[Which][0] = TWidNorm * Pos;
+			m_glyphUv[Which][1] = TWidNorm * NewPos;
+			m_glyphUv[Which][2] = Top;
+			m_glyphUv[Which][3] = Bottom;
+			Pos = NewPos;
+			Which++;
+		}
+	}
+#else
+	// Allocate and create display lists of rendering commands
+	DispList = glGenLists(256);
  	for (int k=0; k<=LastLine; k++)
  	{
  		unsigned char Which = CharStarts[k];
@@ -330,6 +379,7 @@ void FontSpecifier::OGL_Reset(bool IsStarting)
  			Which++;
  		}
  	}
+#endif
 }
 
 
@@ -356,11 +406,27 @@ void FontSpecifier::OGL_Render(const char *Text)
 	glBindTexture(GL_TEXTURE_2D,TxtrID);
 	
 	size_t Len = MIN(strlen(Text),255);
+#ifdef __EMSCRIPTEN__
+	const int Pad = 1;
+	const int ascent_p = Ascent + Pad;
+	const int descent_p = Descent + Pad;
+	float x = 0;
+	for (size_t k = 0; k < Len; k++)
+	{
+		const unsigned char c = Text[k];
+		const short Width = Widths[c] + 2 * Pad;
+		OGL_RenderTexturedRect(x - Pad, -ascent_p, Width, descent_p + ascent_p,
+			m_glyphUv[c][0], m_glyphUv[c][2], m_glyphUv[c][1], m_glyphUv[c][3]);
+		x += Widths[c];
+	}
+	glTranslatef(x, 0, 0);
+#else
 	for (size_t k=0; k<Len; k++)
 	{
 		unsigned char c = Text[k];
 		glCallList(DispList+c);
 	}
+#endif
 	
 	glPopAttrib();
 }
