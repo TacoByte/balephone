@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Fetches and builds everything the wasm build needs that is not in git:
 #
-#   wasm/deps/     pinned third-party library sources
-#   wasm/prefix/   those libraries cross-compiled with Emscripten
-#   wasm/gamedata/ the freely-distributed Marathon 2 game content
+#   wasm/deps/          pinned third-party library sources
+#   wasm/prefix/        those libraries cross-compiled with Emscripten
+#   data/Scenarios/     the freely-distributed Marathon game content
+#                       (git submodules pinned by the engine repo)
 #
 # Prerequisites: emscripten (emcc/emcmake in PATH), cmake, git, curl, unzip.
 #
@@ -14,9 +15,9 @@
 set -euo pipefail
 
 WASM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+A1_ROOT="$(dirname "$WASM_DIR")"
 DEPS="$WASM_DIR/deps"
 PREFIX="$WASM_DIR/prefix"
-GAMEDATA="$WASM_DIR/gamedata"
 JOBS="${JOBS:-8}"
 
 command -v emcmake >/dev/null || { echo "error: emcmake not found (install/activate emscripten)"; exit 1; }
@@ -37,7 +38,6 @@ SNDFILE_TAG=1.2.2
 OPENAL_TAG=1.23.1
 ASIO_TAG=asio-1-30-2
 GL4ES_COMMIT=17f0894e19d1553e4176276c759915dab44c08e2  # v1.1.7 master, no release tag
-DATA_URL="https://github.com/Aleph-One-Marathon/alephone/releases/download/release-20250829/Marathon2-20250829-Data.zip"
 
 clone() { # repo tag dir
     local repo="$1" tag="$2" dir="$DEPS/$3"
@@ -112,25 +112,27 @@ emcmake cmake -B "$DEPS/gl4es/build" -S "$DEPS/gl4es" \
     -DNO_LOADER=ON -DNO_INIT_CONSTRUCTOR=ON -DDEFAULT_ES=2
 cmake --build "$DEPS/gl4es/build" -j"$JOBS"
 
-# --- Marathon 2 game data ----------------------------------------------------
+# --- game data (data/Scenarios submodules) -----------------------------------
+# The engine repo pins the freely-released Marathon game data as submodules.
+# Their URLs in .gitmodules are relative (they resolve to sibling repos of
+# whatever remote the engine was cloned from), which breaks in forks, so
+# point the local config at the canonical upstream data repos before fetching.
 
-if [ -e "$GAMEDATA/Map.sceA" ]; then
-    echo "--- gamedata: already present, skipping download"
-else
-    echo "--- downloading Marathon 2 game data"
-    tmp="$(mktemp -d)"
-    curl -L -o "$tmp/data.zip" "$DATA_URL"
-    unzip -q "$tmp/data.zip" -d "$tmp/extracted"
-    # The zip contains a single top-level "Marathon 2" directory.
-    src="$(find "$tmp/extracted" -maxdepth 1 -mindepth 1 -type d | head -1)"
-    mkdir -p "$GAMEDATA"
-    cp -R "$src"/. "$GAMEDATA"/
-    rm -rf "$tmp"
-fi
+echo "--- fetching game data submodules"
+declare -a SCENARIOS=("Marathon" "Marathon 2" "Marathon Infinity")
+declare -a DATA_REPOS=(data-marathon data-marathon-2 data-marathon-infinity)
+
+for i in "${!SCENARIOS[@]}"; do
+    path="data/Scenarios/${SCENARIOS[$i]}"
+    git -C "$A1_ROOT" submodule init "$path"
+    git -C "$A1_ROOT" config "submodule.$path.url" \
+        "https://github.com/Aleph-One-Marathon/${DATA_REPOS[$i]}.git"
+    git -C "$A1_ROOT" submodule update --depth 1 "$path"
+done
 
 echo
 echo "All dependencies ready:"
 echo "  libs:     $(ls "$PREFIX/lib" | tr '\n' ' ')"
-echo "  gamedata: $(ls "$GAMEDATA" | tr '\n' ' ')"
+echo "  gamedata: $(ls "$A1_ROOT/data/Scenarios" | tr '\n' ' ')"
 echo
 echo "Next: emcmake cmake -B wasm/build -S wasm && cmake --build wasm/build -j$JOBS"
