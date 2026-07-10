@@ -78,6 +78,40 @@
     canvasEl.style.width = Math.round(rw * scale) + 'px';
     canvasEl.style.height = Math.round(rh * scale) + 'px';
   }
+
+  function withoutDisabledEnhancedHud(text) {
+    return text.replace(
+      /^[ \t]*<disable_plugin\b[^>]*Enhanced HUD[^>]*>[ \t]*(?:\r?\n|$)/gm,
+      '',
+    );
+  }
+
+  function enableEnhancedHudInScenarioDefaults(path, data) {
+    if (path !== 'Scripts/Default Preferences.xml') return data;
+    const text = new TextDecoder().decode(data);
+    const updated = withoutDisabledEnhancedHud(text);
+    return updated === text ? data : new TextEncoder().encode(updated);
+  }
+
+  function enableEnhancedHudInStoredPrefs(Module) {
+    let changed = false;
+    for (const name of Module.FS.readdir(PERSIST_DIR)) {
+      if (!name.endsWith(' Preferences')) continue;
+      const path = PERSIST_DIR + '/' + name;
+      try {
+        const text = Module.FS.readFile(path, { encoding: 'utf8' });
+        const updated = withoutDisabledEnhancedHud(text);
+        if (updated !== text) {
+          Module.FS.writeFile(path, updated);
+          changed = true;
+        }
+      } catch (error) {
+        console.warn('Could not enable Enhanced HUD in ' + name + ':', error);
+      }
+    }
+    return changed;
+  }
+
   new MutationObserver(fitCanvas).observe(canvasEl, {
     attributes: true, attributeFilter: ['width', 'height'],
   });
@@ -129,7 +163,10 @@
     for (const f of files) {
       const dir = GAME_DIR + '/' + f.path.split('/').slice(0, -1).join('/');
       Module.FS.mkdirTree(dir);
-      Module.FS.writeFile(GAME_DIR + '/' + f.path, f.data);
+      Module.FS.writeFile(
+        GAME_DIR + '/' + f.path,
+        enableEnhancedHudInScenarioDefaults(f.path, f.data),
+      );
     }
 
     // Persist prefs + saved games in IndexedDB, then start the game.
@@ -138,10 +175,15 @@
     Module.FS.syncfs(true, (err) => {
       if (err) console.warn('IDBFS load failed:', err);
 
+      // Enhanced HUD is now the browser default. Remove the old opt-out from
+      // profiles created by earlier Balep releases before the engine reads it.
+      const upgradedHudPreference = enableEnhancedHudInStoredPrefs(Module);
+
       // Flush writes back to IndexedDB periodically and when leaving.
       const persist = () => Module.FS.syncfs(false, (e) => {
         if (e) console.warn('IDBFS save failed:', e);
       });
+      if (upgradedHudPreference) persist();
       setInterval(persist, 10000);
       window.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') persist();
