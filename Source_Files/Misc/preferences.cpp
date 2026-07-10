@@ -782,14 +782,19 @@ static void online_dialog(void *arg)
 	tab_placer* tabs = new tab_placer();
 	
 	std::vector<std::string> labels;
+#ifndef __EMSCRIPTEN__
 	labels.push_back("ACCOUNT");
+#endif
 	labels.push_back("PREGAME LOBBY");
+#ifndef __EMSCRIPTEN__
 	labels.push_back("STATS");
+#endif
 	w_tab *tab_w = new w_tab(labels, tabs);
 	
 	placer->dual_add(tab_w, d);
 	placer->add(new w_spacer(), true);
 	
+#ifndef __EMSCRIPTEN__
 	vertical_placer *account = new vertical_placer();
 	table_placer *account_table = new table_placer(2, get_theme_space(ITEM_WIDGET), true);
 	account_table->col_flags(0, placeable::kAlignRight);
@@ -817,6 +822,7 @@ static void online_dialog(void *arg)
 	account_table->add_row(new w_spacer(), true);
 	
 	account->add(account_table, true);
+#endif
 	
 	vertical_placer *lobby = new vertical_placer();
 	table_placer *lobby_table = new table_placer(2, get_theme_space(ITEM_WIDGET), true);
@@ -860,6 +866,7 @@ static void online_dialog(void *arg)
 	
 	lobby->add(lobby_table, true);
 	
+#ifndef __EMSCRIPTEN__
 	vertical_placer *stats = new vertical_placer();
 	stats->dual_add(new w_hyperlink(A1_LEADERBOARD_URL, "Visit the leaderboards"), d);
 	stats->add(new w_spacer(), true);
@@ -881,10 +888,15 @@ static void online_dialog(void *arg)
 	stats->dual_add(new w_button("PLUGINS", plugins_dialog, &d), d);
 	
 	stats->add(new w_spacer(), true);
+#endif
 	
+#ifndef __EMSCRIPTEN__
 	tabs->add(account, true);
+#endif
 	tabs->add(lobby, true);
+#ifndef __EMSCRIPTEN__
 	tabs->add(stats, true);
+#endif
 	
 	placer->add(tabs, true);
 	placer->add(new w_spacer(), true);
@@ -914,6 +926,7 @@ static void online_dialog(void *arg)
 			changed = true;
 		}
 		
+#ifndef __EMSCRIPTEN__
 		const char *metaserver_login = login_w->get_text();
 		if (strcmp(metaserver_login, network_preferences->metaserver_login)) {
 			strncpy(network_preferences->metaserver_login, metaserver_login, network_preferences_data::kMetaserverLoginLength-1);
@@ -935,6 +948,7 @@ static void online_dialog(void *arg)
 				changed = true;
 			}
 		}
+#endif
 		
 		bool use_custom_metaserver_colors = custom_colors_w->get_selection();
 		if (use_custom_metaserver_colors != network_preferences->use_custom_metaserver_colors)
@@ -974,6 +988,7 @@ static void online_dialog(void *arg)
 			changed = true;
 		}
 		
+#ifndef __EMSCRIPTEN__
 		bool allow_stats = allow_stats_w->get_selection() == 1;
 		if (allow_stats != network_preferences->allow_stats)
 		{
@@ -981,6 +996,7 @@ static void online_dialog(void *arg)
 			Plugins::instance()->invalidate();
 			changed = true;
 		}
+#endif
 		
 		
 		if (changed)

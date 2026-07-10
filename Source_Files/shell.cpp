@@ -1404,7 +1404,7 @@ static void process_game_key(const SDL_Event &event)
 		default:
 			break;
 		}
-		if (item > 0) {
+		if (item > 0 && enabled_item(item)) {
 			draw_menu_button_for_command(item);
 			do_menu_item_command(mInterface, item, event_has_cheat_modifiers(event));
 		}

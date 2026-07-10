@@ -337,6 +337,10 @@ extern bool choose_saved_game_to_load(FileSpecifier& File);
 static void display_credits(void);
 static void draw_button(short index, bool pressed);
 static void draw_powered_by_aleph_one(bool pressed);
+#ifdef __EMSCRIPTEN__
+static bool web_main_menu_item_disabled(short item);
+static void draw_web_disabled_main_menu_items();
+#endif
 static void handle_replay(bool last_replay);
 static bool begin_game(short user, bool cheat);
 static void start_game(short user, bool changing_level);
@@ -1015,6 +1019,9 @@ void update_interface_display(
 
 	if (game_state.state == _display_main_menu)
 	{
+#ifdef __EMSCRIPTEN__
+		draw_web_disabled_main_menu_items();
+#endif
 		if (game_state.highlighted_main_menu_item >= 0)
 		{
 			draw_button(game_state.highlighted_main_menu_item + START_OF_MENU_INTERFACE_RECTS - 1, true);
@@ -1268,6 +1275,80 @@ static void draw_powered_by_aleph_one(bool pressed)
 	_restore_port();
 }
 
+#ifdef __EMSCRIPTEN__
+static bool web_main_menu_item_disabled(short item)
+{
+	switch (item)
+	{
+		case iNewGame:
+		case iLoadGame:
+		case iReplaySavedFilm:
+		case iReplayLastFilm:
+		case iSaveLastFilm:
+		case iQuit:
+			return true;
+		default:
+			return false;
+	}
+}
+
+static void draw_web_disabled_main_menu_items()
+{
+	static const short disabled_items[] = {
+		iNewGame,
+		iLoadGame,
+		iReplaySavedFilm,
+		iReplayLastFilm,
+		iSaveLastFilm,
+		iQuit
+	};
+
+	_set_port_to_intro();
+	for (short item : disabled_items)
+	{
+		screen_rectangle *screen_rect = get_interface_rectangle(
+			item - 1 + START_OF_MENU_INTERFACE_RECTS);
+		SDL_Rect rect = {
+			screen_rect->left,
+			screen_rect->top,
+			screen_rect->right - screen_rect->left,
+			screen_rect->bottom - screen_rect->top
+		};
+		SDL_Surface *muted = SDL_CreateRGBSurfaceWithFormat(
+			0, rect.w, rect.h, 32, SDL_PIXELFORMAT_RGBA32);
+		if (!muted)
+			continue;
+
+		SDL_BlitSurface(draw_surface, &rect, muted, nullptr);
+		if (SDL_LockSurface(muted) == 0)
+		{
+			for (int y = 0; y < muted->h; ++y)
+			{
+				Uint32 *row = reinterpret_cast<Uint32 *>(
+					static_cast<Uint8 *>(muted->pixels) + y * muted->pitch);
+				for (int x = 0; x < muted->w; ++x)
+				{
+					Uint8 red, green, blue, alpha;
+					SDL_GetRGBA(row[x], muted->format, &red, &green, &blue, &alpha);
+					Uint8 brightest = std::max(red, std::max(green, blue));
+					if (brightest >= 48)
+					{
+						Uint8 gray = static_cast<Uint8>(
+							((static_cast<int>(red) + green + blue) / 3) * 0.45);
+						row[x] = SDL_MapRGBA(muted->format, gray, gray, gray, alpha);
+					}
+				}
+			}
+			SDL_UnlockSurface(muted);
+		}
+		SDL_SetSurfaceBlendMode(muted, SDL_BLENDMODE_NONE);
+		SDL_BlitSurface(muted, nullptr, draw_surface, &rect);
+		SDL_FreeSurface(muted);
+	}
+	_restore_port();
+}
+#endif
+
 void display_main_menu(
 	void)
 {
@@ -1290,6 +1371,9 @@ void display_main_menu(
 	}
 
 	draw_powered_by_aleph_one(false);
+#ifdef __EMSCRIPTEN__
+	draw_web_disabled_main_menu_items();
+#endif
 
 	game_state.main_menu_display_count++;
 }
@@ -1306,6 +1390,11 @@ void do_menu_item_command(
 	short menu_item,
 	bool cheat)
 {
+#ifdef __EMSCRIPTEN__
+	if (menu_id == mInterface && web_main_menu_item_disabled(menu_item))
+		return;
+#endif
+
 	switch(menu_id)
 	{
             
@@ -1621,6 +1710,11 @@ void process_main_menu_highlight_select(bool cheatkeys_down)
 bool enabled_item(
 	short item)
 {
+#ifdef __EMSCRIPTEN__
+	if (web_main_menu_item_disabled(item))
+		return false;
+#endif
+
 	bool enabled= true;
 
 	switch(item)
