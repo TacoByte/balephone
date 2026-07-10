@@ -272,8 +272,14 @@ EM_JS(int, js_net_public_rooms, (char* buf, int maxLen), {
   return length;
 });
 
-// Shareable join link for the current room: the page's own URL (scenario,
-// relay overrides etc. preserved) plus ?join=CODE. Empty if not connected.
+// Current room code and shareable join link. The link uses the page's own URL
+// (scenario, relay overrides etc. preserved) plus ?join=CODE.
+EM_JS(void, js_net_room_code, (char* buf, int maxLen), {
+  var st = globalThis.__a1net;
+  var room = st && st.status === 2 ? st.room : String();
+  stringToUTF8(room, buf, maxLen);
+});
+
 EM_JS(void, js_net_share_url, (char* buf, int maxLen), {
   var st = globalThis.__a1net;
   if (!st || st.status !== 2 || typeof location === 'undefined') {
@@ -635,6 +641,11 @@ extern void NetDDPPumpWasm();   // network_udp.cpp: drain datagrams to handler
 
 // Shareable join link for the current room ("" when not connected); the
 // gather dialog displays it with a copy button.
+extern "C" void wasm_relay_room_code(char* buf, int maxlen)
+{
+	js_net_room_code(buf, maxlen);
+}
+
 extern "C" void wasm_relay_share_url(char* buf, int maxlen)
 {
 	js_net_share_url(buf, maxlen);

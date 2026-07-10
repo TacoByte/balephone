@@ -40,8 +40,8 @@ async function clickCanvas(page, fx, fy) {
 
 (async () => {
   // Mouse input maps to the dialog's 640x480 virtual space stretched over
-  // the whole canvas; the COPY button sits at ~(459,124) of 640x480.
-  const [copyFx, copyFy] = (process.argv[2] || '0.717,0.258').split(',').map(Number);
+  // the whole canvas; the compact COPY LINK button sits beside the room code.
+  const [copyFx, copyFy] = (process.argv[2] || '0.50,0.258').split(',').map(Number);
   const server = await startServer(PORT);
   const browser = await chromium.launch({ headless: true, args: ['--enable-unsafe-swiftshader'] });
 

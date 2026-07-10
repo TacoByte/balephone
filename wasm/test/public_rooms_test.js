@@ -190,12 +190,12 @@ function gameUrl(extra = '') {
       'empty join dialog unexpectedly attempted a relay connection',
     );
 
-    await pageB.goto(gameUrl('ZZZZ'), { waitUntil: 'domcontentloaded' });
+    // A share link should prefill the room code and visibly select the
+    // matching public room without requiring a list click.
+    await pageB.goto(gameUrl(roomCode), { waitUntil: 'domcontentloaded' });
     await pageB.waitForTimeout(16000);
     await pageB.screenshot({ path: 'public_join_list.png' });
 
-    await clickCanvas(pageB, 0.5, 0.34, 500); // first public-room row
-    await pageB.screenshot({ path: 'public_join_selected.png' });
     await clickCanvas(pageB, 0.5, 0.613); // JOIN
     await pageB.waitForFunction(
       (expected) => window.__module && window.__module.__a1RoomCode === expected,

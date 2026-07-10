@@ -101,6 +101,7 @@ extern "C" int wasm_relay_publish_public(
 	const char* scenario_version);
 extern "C" void wasm_relay_unlist_public();
 extern "C" int wasm_relay_public_rooms(char* buf, int maxlen);
+extern "C" void wasm_relay_room_code(char* buf, int maxlen);
 extern "C" void wasm_relay_share_url(char* buf, int maxlen);
 extern "C" void wasm_copy_to_clipboard(const char* text);
 #endif
@@ -2465,25 +2466,38 @@ public:
 	
 		w_toggle* autogather_w = new w_toggle(false);
 #ifdef __EMSCRIPTEN__
-		// The relay room is open by now (NetGather ran); the shareable join
-		// link (page URL + ?join=CODE) and its copy button share the
-		// Auto-Gather row, since the dialog is already near full height.
-		// Unbalanced placer: the long URL must not set every cell's width.
-		horizontal_placer *autogather_placer = new horizontal_placer(get_theme_space(ITEM_WIDGET), false);
+		// The relay room is open by now (NetGather ran). The full shareable
+		// link can contain long relay overrides, so show its compact room code
+		// and copy the complete URL from the button.
+		const int item_space = get_theme_space(ITEM_WIDGET);
+		horizontal_placer *autogather_placer = new horizontal_placer(item_space * 3);
+		horizontal_placer *share_placer = new horizontal_placer(item_space);
+		static char room_code[32];
 		static char share_url[256];
+		wasm_relay_room_code(room_code, sizeof(room_code));
 		wasm_relay_share_url(share_url, sizeof(share_url));
-		if (share_url[0])
+		if (room_code[0])
 		{
-			autogather_placer->dual_add(new w_static_text(share_url, ITEM_WIDGET), m_dialog);
-			autogather_placer->dual_add(new w_tiny_button("COPY", [](void*) {
-				wasm_copy_to_clipboard(share_url);
-			}), m_dialog);
+			const std::string room_label = std::string("Room code: ") + room_code;
+			share_placer->dual_add(new w_static_text(room_label.c_str(), ITEM_WIDGET), m_dialog);
+			if (share_url[0])
+			{
+				share_placer->dual_add(new w_tiny_button("COPY LINK", [](void*) {
+					wasm_copy_to_clipboard(share_url);
+				}), m_dialog);
+			}
 		}
+		autogather_placer->add(share_placer, true);
+
+		horizontal_placer *autogather_controls = new horizontal_placer(item_space);
+		autogather_controls->dual_add(autogather_w->label("Auto-Gather"), m_dialog);
+		autogather_controls->dual_add(autogather_w, m_dialog);
+		autogather_placer->add(autogather_controls, true);
 #else
 		horizontal_placer *autogather_placer = new horizontal_placer(get_theme_space(ITEM_WIDGET), true);
-#endif
 		autogather_placer->dual_add(autogather_w->label("Auto-Gather"), m_dialog);
 		autogather_placer->dual_add(autogather_w, m_dialog);
+#endif
 
 		placer->add(autogather_placer, true);
 		placer->add(new w_spacer(), true);
@@ -2818,6 +2832,7 @@ private:
 		std::vector<GameListMessage::GameListEntry> games;
 		std::map<uint32, std::string> room_codes;
 		bool selected_room_found = false;
+		const std::string requested_room = m_joinAddressWidget->get_text();
 		std::istringstream rows(snapshot);
 		std::string row;
 		uint32 game_id = 1;
@@ -2866,7 +2881,9 @@ private:
 			game.m_description.m_closed =
 				game.m_description.m_numPlayers >= game.m_description.m_maxPlayers;
 			game.m_description.m_running = false;
-			game.target(room_code == m_selectedPublicRoom);
+			// Keep the public list synchronized with the room-code field. This
+			// also highlights a public room opened through a ?join=CODE link.
+			game.target(room_code == requested_room);
 			selected_room_found = selected_room_found || game.target();
 
 			room_codes[game_id] = room_code;
