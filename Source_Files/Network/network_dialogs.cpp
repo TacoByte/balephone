@@ -2456,7 +2456,11 @@ public:
 	SdlGatherDialog(bool remote_hub_mode) : GatherDialog(remote_hub_mode)
 	{
 		vertical_placer *placer = new vertical_placer;
+#ifdef __EMSCRIPTEN__
+		placer->dual_add(new w_title("GATHER NETWORK GAME - BETA"), m_dialog);
+#else
 		placer->dual_add(new w_title("GATHER NETWORK GAME"), m_dialog);
+#endif
 		placer->add(new w_spacer());
 	
 		// m_dialog.add(new w_static_text("Players on Network"));
@@ -2597,7 +2601,11 @@ public:
 #endif
 
 		vertical_placer *placer = new vertical_placer;
+#ifdef __EMSCRIPTEN__
+		placer->dual_add(new w_title("JOIN NETWORK GAME - BETA"), m_dialog);
+#else
 		placer->dual_add(new w_title("JOIN NETWORK GAME"), m_dialog);
+#endif
 		placer->add(new w_spacer(), true);
 
 		table_placer *table = new table_placer(2, get_theme_space(ITEM_WIDGET), true);
@@ -2958,7 +2966,11 @@ public:
 	{
 		vertical_placer *placer = new vertical_placer;
 
+#ifdef __EMSCRIPTEN__
+		placer->dual_add(new w_title("SETUP NETWORK GAME - BETA"), m_dialog);
+#else
 		placer->dual_add(new w_title("SETUP NETWORK GAME"), m_dialog);
+#endif
 		placer->add(new w_spacer(), true);
 
 		table_placer *table = new table_placer(2, 10);

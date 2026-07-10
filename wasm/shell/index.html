@@ -56,6 +56,8 @@
 
   const PERSIST_DIR = '/home/web_user/.alephone';
   const GAME_DIR = '/data/game';
+  const DEFAULT_RELAY_URL = 'wss://balephone-relay.onrender.com';
+  const DEFAULT_RELAY_HTTP_URL = 'https://balephone-relay.onrender.com';
 
   function setStatus(text, frac) {
     statusEl.textContent = text.toUpperCase();
@@ -115,8 +117,8 @@
     canvas: canvasEl,
     arguments: [GAME_DIR],
     // Multiplayer relay. Override with ?relay=wss://host:port if needed.
-    relayUrl: params.get('relay') || undefined,
-    relayHttpUrl: params.get('relay_http') || undefined,
+    relayUrl: params.get('relay') || DEFAULT_RELAY_URL,
+    relayHttpUrl: params.get('relay_http') || DEFAULT_RELAY_HTTP_URL,
     print(text) { console.log(text); },
     printErr(text) { console.warn(text); },
   }).then(async (Module) => {
