@@ -1,4 +1,9 @@
-# Aleph One
+# Balep
+
+Balep brings the classic Marathon trilogy to the browser using the Aleph One
+engine. Play the multiplayer beta at [balep.vercel.app](https://balep.vercel.app).
+
+## Aleph One engine
 
 Aleph One is the open source continuation of Bungie™’s _Marathon® 2_ and _Marathon Infinity_ game engines. Aleph One plays _Marathon_, _Marathon 2_, _Marathon Infinity_, and third-party content on a variety of platforms.
 

@@ -1,7 +1,7 @@
 {
-  "name": "alephone-web-relay",
+  "name": "balep-relay",
   "version": "1.0.0",
-  "description": "WebSocket relay for Aleph One browser multiplayer",
+  "description": "WebSocket relay for Balep browser multiplayer",
   "main": "server.js",
   "private": true,
   "scripts": {

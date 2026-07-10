@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Aleph One web relay - rooms + message routing, knows nothing about the game.
+ * Balep relay - rooms + message routing, knows nothing about the game.
  *
  * Browser clients connect one WebSocket each. The first member of a room
  * (its creator, the gatherer) is member 1 and acts as the game's hub; the

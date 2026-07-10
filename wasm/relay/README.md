@@ -1,8 +1,8 @@
-# Aleph One web relay
+# Balep relay
 
 This service provides the persistent WebSocket transport and public-room
-directory used by the browser build. Room and connection state live in this
-process.
+directory used by the Balep browser build. Room and connection state live in
+this process.
 
 ## Local development
 

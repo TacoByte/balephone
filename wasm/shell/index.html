@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Aleph One (WebAssembly)</title>
+<title>Balep</title>
 <style>
   html, body {
     margin: 0; padding: 0; height: 100%;
@@ -48,7 +48,7 @@
   const params = new URLSearchParams(location.search);
   const scenario = SCENARIOS[params.get('scenario')] ? params.get('scenario')
                                                      : 'infinity';
-  document.title = SCENARIOS[scenario] + ' — Aleph One (WebAssembly)';
+  document.title = SCENARIOS[scenario] + ' — Balep';
 
   const statusEl = document.getElementById('status');
   const bar = document.getElementById('bar');
@@ -56,8 +56,8 @@
 
   const PERSIST_DIR = '/home/web_user/.alephone';
   const GAME_DIR = '/data/game';
-  const DEFAULT_RELAY_URL = 'wss://balephone-relay.onrender.com';
-  const DEFAULT_RELAY_HTTP_URL = 'https://balephone-relay.onrender.com';
+  const DEFAULT_RELAY_URL = 'wss://balep-relay.onrender.com';
+  const DEFAULT_RELAY_HTTP_URL = 'https://balep-relay.onrender.com';
 
   function setStatus(text, frac) {
     statusEl.textContent = text.toUpperCase();

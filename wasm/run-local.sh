@@ -74,7 +74,7 @@ if [[ "$relay_ready" != true ]]; then
 fi
 
 echo
-echo "Aleph One is available at:"
+echo "Balep is available at:"
 echo "  $GAME_URL"
 echo
 echo "Press Ctrl+C to stop both servers."
