@@ -4250,7 +4250,13 @@ static void default_network_preferences(network_preferences_data *preferences)
 	preferences->use_netscript = false;
 	preferences->netscript_file[0] = '\0';
 	preferences->cheat_flags = _allow_tunnel_vision | _allow_crosshair | _allow_behindview | _allow_overlay_map;
+#ifdef __EMSCRIPTEN__
+	// Browser rooms are discoverable by default; gatherers can still uncheck
+	// "Advertise Game on Internet" when they want an unlisted room.
+	preferences->advertise_on_metaserver = true;
+#else
 	preferences->advertise_on_metaserver = false;
+#endif
 	preferences->attempt_upnp = false;
 #ifdef __EMSCRIPTEN__
 	// No metaserver or dedicated hubs on the web; the gatherer's browser is

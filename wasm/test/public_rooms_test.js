@@ -9,6 +9,12 @@ const BUILD_DIR = path.resolve(__dirname, '../build');
 const RELAY_DIR = path.resolve(__dirname, '../relay');
 const WEB_PORT = 8792;
 const RELAY_PORT = 18788;
+const REMOTE = Boolean(process.env.GAME_ORIGIN);
+const GAME_ORIGIN = (process.env.GAME_ORIGIN || `http://127.0.0.1:${WEB_PORT}`)
+  .replace(/\/+$/, '');
+const RELAY_WS_URL = process.env.RELAY_WS_URL || `ws://127.0.0.1:${RELAY_PORT}`;
+const RELAY_HTTP_URL = (process.env.RELAY_HTTP_URL || `http://127.0.0.1:${RELAY_PORT}`)
+  .replace(/\/+$/, '');
 const MIME = {
   '.html': 'text/html',
   '.js': 'text/javascript',
@@ -55,22 +61,14 @@ function startRelay() {
   });
 }
 
-function getRooms() {
-  return new Promise((resolve, reject) => {
-    http.get(`http://127.0.0.1:${RELAY_PORT}/v1/rooms`, (response) => {
-      let body = '';
-      response.setEncoding('utf8');
-      response.on('data', (chunk) => { body += chunk; });
-      response.on('end', () => {
-        try {
-          assert.strictEqual(response.statusCode, 200);
-          resolve(JSON.parse(body).rooms);
-        } catch (error) {
-          reject(error);
-        }
-      });
-    }).on('error', reject);
+async function getRooms() {
+  const response = await fetch(`${RELAY_HTTP_URL}/v1/rooms`, {
+    headers: { Origin: GAME_ORIGIN },
+    cache: 'no-store',
   });
+  assert.strictEqual(response.status, 200);
+  const body = await response.json();
+  return body.rooms;
 }
 
 async function waitForRooms(predicate) {
@@ -92,11 +90,33 @@ async function clickCanvas(page, fx, fy, wait = 1200) {
 function gameUrl(extra = '') {
   const query = new URLSearchParams({
     scenario: 'marathon2',
-    relay: `ws://127.0.0.1:${RELAY_PORT}`,
-    relay_http: `http://127.0.0.1:${RELAY_PORT}`,
+    relay: RELAY_WS_URL,
+    relay_http: RELAY_HTTP_URL,
   });
   if (extra) query.set('join', extra);
-  return `http://127.0.0.1:${WEB_PORT}/index.html?${query}`;
+  return `${GAME_ORIGIN}/index.html?${query}`;
+}
+
+async function boot(page, url) {
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(
+    () => {
+      const M = window.__module;
+      if (!M || !M.FS) return false;
+      try {
+        return M.FS.analyzePath(
+          '/home/web_user/.alephone/Marathon 2 Preferences',
+        ).exists;
+      } catch (_) {
+        return false;
+      }
+    },
+    null,
+    { timeout: REMOTE ? 90000 : 30000 },
+  );
+  // Preferences are created before the engine finishes drawing and accepting
+  // input on its main menu, especially when scenario assets come from a CDN.
+  await page.waitForTimeout(8000);
 }
 
 (async () => {
@@ -105,7 +125,11 @@ function gameUrl(extra = '') {
   let browser;
 
   try {
-    [relay, web] = await Promise.all([startRelay(), startWebServer(WEB_PORT)]);
+    if (REMOTE) {
+      console.log(`testing ${GAME_ORIGIN} with relay ${RELAY_HTTP_URL}`);
+    } else {
+      [relay, web] = await Promise.all([startRelay(), startWebServer(WEB_PORT)]);
+    }
     browser = await chromium.launch({
       headless: true,
       args: ['--enable-unsafe-swiftshader'],
@@ -113,8 +137,15 @@ function gameUrl(extra = '') {
 
     const contextA = await browser.newContext({ viewport: { width: 1440, height: 810 } });
     const pageA = await contextA.newPage();
-    await pageA.goto(gameUrl(), { waitUntil: 'domcontentloaded' });
-    await pageA.waitForTimeout(14000);
+    await boot(pageA, gameUrl());
+
+    const advertisesByDefault = await pageA.evaluate(() => {
+      const M = window.__module;
+      const prefsPath = '/home/web_user/.alephone/Marathon 2 Preferences';
+      const text = M.FS.readFile(prefsPath, { encoding: 'utf8' });
+      return /advertise_on_metaserver="true"/.test(text);
+    });
+    assert(advertisesByDefault, 'browser rooms must advertise publicly by default');
 
     await pageA.evaluate(async () => {
       const M = window.__module;
@@ -131,8 +162,7 @@ function gameUrl(extra = '') {
         M.FS.syncfs(false, (error) => error ? reject(error) : resolve());
       });
     });
-    await pageA.reload({ waitUntil: 'domcontentloaded' });
-    await pageA.waitForTimeout(14000);
+    await boot(pageA, gameUrl());
 
     await clickCanvas(pageA, 0.185, 0.575); // Gather Network Game
     await pageA.screenshot({ path: 'public_setup.png' });
@@ -164,8 +194,7 @@ function gameUrl(extra = '') {
 
     // Browser room codes must not leak from an earlier session into the
     // ordinary join dialog.
-    await pageB.goto(gameUrl(), { waitUntil: 'domcontentloaded' });
-    await pageB.waitForTimeout(14000);
+    await boot(pageB, gameUrl());
     const seededStaleCode = await pageB.evaluate(async () => {
       const M = window.__module;
       const prefsPath = '/home/web_user/.alephone/Marathon 2 Preferences';
@@ -179,8 +208,7 @@ function gameUrl(extra = '') {
       return true;
     });
     assert(seededStaleCode, 'test could not seed a stale room code');
-    await pageB.reload({ waitUntil: 'domcontentloaded' });
-    await pageB.waitForTimeout(14000);
+    await boot(pageB, gameUrl());
     await clickCanvas(pageB, 0.209, 0.662); // Join Network Game
     await pageB.screenshot({ path: 'public_join_empty.png' });
     await clickCanvas(pageB, 0.5, 0.613, 500); // disabled JOIN
@@ -192,8 +220,7 @@ function gameUrl(extra = '') {
 
     // A share link should prefill the room code and visibly select the
     // matching public room without requiring a list click.
-    await pageB.goto(gameUrl(roomCode), { waitUntil: 'domcontentloaded' });
-    await pageB.waitForTimeout(16000);
+    await boot(pageB, gameUrl(roomCode));
     await pageB.screenshot({ path: 'public_join_list.png' });
 
     await clickCanvas(pageB, 0.5, 0.613); // JOIN
