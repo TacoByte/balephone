@@ -3,9 +3,14 @@
   "version": "1.0.0",
   "description": "WebSocket relay for Aleph One browser multiplayer",
   "main": "server.js",
+  "private": true,
   "scripts": {
     "start": "node server.js",
-    "test": "node rooms_test.js"
+    "check": "node --check server.js && node --check rooms_test.js && node --check hardening_test.js",
+    "test": "npm run check && node rooms_test.js && node hardening_test.js"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
     "ws": "^8.18.0"
